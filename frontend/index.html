@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Traspasos de Almacén – Grupo Urbania</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<div id="sidebar">
+  <div class="logo-area">
+    <div class="brand-name">GRUPO URBANIA</div>
+    <div class="brand-sub">Sistema de Traspasos</div>
+  </div>
+  <nav>
+    <div class="nav-section">Principal</div>
+    <a href="#" class="nav-link active" data-view="dashboard">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      Dashboard
+    </a>
+    <div class="nav-section">Traspasos</div>
+    <a href="#" class="nav-link" data-view="nueva-solicitud">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      Nueva Solicitud
+    </a>
+    <a href="#" class="nav-link" data-view="autorizacion">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Autorización
+      <span id="badge-auth" style="margin-left:auto;background:var(--orange);color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700"></span>
+    </a>
+    <a href="#" class="nav-link" data-view="recepcion">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+      Recepción
+      <span id="badge-rec" style="margin-left:auto;background:var(--blue);color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700"></span>
+    </a>
+    <a href="#" class="nav-link" data-view="historial">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      Historial
+    </a>
+    <div class="nav-section">Catálogos</div>
+    <a href="#" class="nav-link" data-view="empresas">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      Empresas
+    </a>
+    <a href="#" class="nav-link" data-view="centros-costo">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Centros de Costo
+    </a>
+    <a href="#" class="nav-link" data-view="insumos">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      Insumos
+    </a>
+    <div class="nav-section">Administración</div>
+    <a href="#" class="nav-link" data-view="usuarios">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      Usuarios
+    </a>
+  </nav>
+  <div class="sidebar-footer">v1.0 · Grupo Urbania © 2026</div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div id="main">
+  <div id="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div id="topbar-user"></div>
+    </div>
+  </div>
+  <div id="content">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;color:#888">
+      <div style="border:4px solid #f3f3f3;border-top:4px solid var(--green);border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin-bottom:16px"></div>
+      <div style="font-family:'Montserrat',sans-serif;font-weight:600;font-size:14px">Cargando datos desde el servidor...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PRINT AREA ===== -->
+<div id="print-area" style="display:none"></div>
+
+<!-- ===== MODAL ===== -->
+<div id="modal-overlay" class="modal-overlay">
+  <div class="modal" id="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- ===== SCRIPTS (order matters) ===== -->
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/state.js"></script>
+<script src="js/modal.js"></script>
+<script src="js/views/dashboard.js"></script>
+<script src="js/views/solicitud.js"></script>
+<script src="js/views/autorizacion.js"></script>
+<script src="js/views/recepcion.js"></script>
+<script src="js/views/historial.js"></script>
+<script src="js/views/detalle.js"></script>
+<script src="js/views/devolucion.js"></script>
+<script src="js/views/print.js"></script>
+<script src="js/views/catalogos/empresas.js"></script>
+<script src="js/views/catalogos/centrosCosto.js"></script>
+<script src="js/views/catalogos/insumos.js"></script>
+<script src="js/views/usuarios.js"></script>
+<script src="js/router.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Entorno / Credenciales
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+ENV/
+
+# Base de datos local
+db.json

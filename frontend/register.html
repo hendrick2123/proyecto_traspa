@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro de Usuario – Grupo Urbania</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --green: #61a60e;
+      --green-dark: #4d8a0a;
+      --green-light: #e8f5d9;
+      --black: #111111;
+      --border: #ddd;
+      --red: #c0392b;
+      --orange: #e67e22;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+    }
+
+    .auth-wrap {
+      width: 100%;
+      max-width: 500px
+    }
+
+    .auth-brand {
+      text-align: center;
+      margin-bottom: 28px
+    }
+
+    .auth-brand .logo-text {
+      font-size: 20px;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: 1px
+    }
+
+    .auth-brand .logo-text span {
+      color: var(--green)
+    }
+
+    .auth-brand .logo-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: #61a60e;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 4px
+    }
+
+    .auth-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 36px 32px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .auth-card h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px
+    }
+
+    .auth-card .subtitle {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 28px
+    }
+
+    .form-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px
+    }
+
+    .form-group {
+      margin-bottom: 18px
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 7px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 11px 14px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 13px;
+      color: #fff;
+      outline: none;
+      transition: border .2s, background .2s;
+    }
+
+    .form-group input::placeholder {
+      color: #555
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: var(--green);
+      background: rgba(97, 166, 14, 0.08);
+    }
+
+    .form-group select {
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none
+    }
+
+    .select-wrap {
+      position: relative
+    }
+
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 5px solid transparent;
+      border-top-color: #aaa;
+      pointer-events: none;
+    }
+
+    .form-group select option {
+      background: #1e1e2e;
+      color: #fff
+    }
+
+    /* Role card selector */
+    .role-info {
+      margin-top: 10px;
+      padding: 12px 14px;
+      background: rgba(97, 166, 14, 0.1);
+      border: 1px solid rgba(97, 166, 14, 0.25);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #a8d668;
+      display: none;
+    }
+
+    .role-info.visible {
+      display: block
+    }
+
+    .role-info strong {
+      display: block;
+      font-size: 13px;
+      color: #c5e880;
+      margin-bottom: 4px
+    }
+
+    .divider-line {
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin: 22px 0;
+    }
+
+    .btn-register {
+      width: 100%;
+      padding: 13px;
+      background: var(--green);
+      border: none;
+      border-radius: 8px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+      letter-spacing: .3px;
+      margin-top: 4px;
+    }
+
+    .btn-register:hover {
+      background: var(--green-dark);
+      transform: translateY(-1px)
+    }
+
+    .auth-footer {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 12px;
+      color: #666
+    }
+
+    .auth-footer a {
+      color: var(--green);
+      text-decoration: none;
+      font-weight: 700
+    }
+
+    .auth-footer a:hover {
+      text-decoration: underline
+    }
+
+    .error-msg {
+      background: rgba(192, 57, 43, 0.15);
+      border: 1px solid rgba(192, 57, 43, 0.3);
+      color: #e74c3c;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 12px;
+      margin-bottom: 18px;
+      display: none;
+    }
+
+    .success-msg {
+      background: rgba(97, 166, 14, 0.15);
+      border: 1px solid rgba(97, 166, 14, 0.3);
+      color: #a8d668;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 12px;
+      margin-bottom: 18px;
+      display: none;
+    }
+
+    .input-icon-wrap {
+      position: relative
+    }
+
+    .input-icon-wrap input {
+      padding-right: 40px
+    }
+
+    .toggle-pw {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #666;
+      display: flex;
+      align-items: center;
+    }
+
+    .toggle-pw:hover {
+      color: #aaa
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg)
+      }
+
+      100% {
+        transform: rotate(360deg)
+      }
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .pw-strength {
+      height: 4px;
+      border-radius: 2px;
+      margin-top: 8px;
+      background: #333;
+      overflow: hidden
+    }
+
+    .pw-strength-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 2px;
+      transition: width .3s, background .3s
+    }
+
+    .pw-hint {
+      font-size: 10px;
+      color: #666;
+      margin-top: 5px
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="auth-wrap">
+    <div class="auth-brand">
+      <div class="logo-text">GRUPO <span>URBANIA</span></div>
+      <div class="logo-sub">Registro de Usuario</div>
+    </div>
+
+    <div class="auth-card">
+      <h2>Crear cuenta</h2>
+      <p class="subtitle">Completa la información para registrarte en el sistema</p>
+
+      <div class="error-msg" id="reg-error"></div>
+      <div class="success-msg" id="reg-success"></div>
+
+      <!-- Nombre + Usuario -->
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>Nombre completo</label>
+          <input type="text" id="reg-nombre" placeholder="Ej. Juan García">
+        </div>
+        <div class="form-group">
+          <label>Nombre de usuario</label>
+          <input type="text" id="reg-username" placeholder="Ej. jgarcia">
+        </div>
+      </div>
+
+      <!-- Correo -->
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="reg-correo" placeholder="correo@empresa.com">
+      </div>
+
+      <!-- Rol -->
+      <div class="form-group">
+        <label>Rol en el sistema</label>
+        <div class="select-wrap">
+          <select id="reg-rol" onchange="onRolChange()">
+            <option value="">— Selecciona un rol —</option>
+            <option value="almacenista">🏗️ Monitor de control</option>
+            <option value="control_obra">📋 Control de Obra</option>
+            <option value="residente">🏠 Residente</option>
+            <option value="administrador">🔑 Administrador</option>
+          </select>
+        </div>
+        <!-- Descripción dinámica del rol -->
+        <div class="role-info" id="role-info"></div>
+      </div>
+
+      <!-- Empresa (requerida para roles operativos) -->
+      <div class="form-group" id="empresa-group" style="display:none">
+        <label>Centros de Costo a los que perteneces *</label>
+        <div id="reg-empresas-checklist"
+          style="max-height:180px;overflow-y:auto;border:1px solid rgba(255, 255, 255, 0.15);border-radius:8px;padding:10px 12px;background:rgba(255,255,255,0.05);display:flex;flex-direction:column;gap:8px">
+          <div style="color:#666;font-size:12px">Cargando centros de costo...</div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:#888">Verás los movimientos de todos los centros de costo seleccionados.
+        </div>
+      </div>
+
+      <hr class="divider-line">
+
+      <!-- Contraseñas -->
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>Contraseña</label>
+          <div class="input-icon-wrap">
+            <input type="password" id="reg-pass" placeholder="Mínimo 6 caracteres" oninput="checkStrength()"
+              autocomplete="new-password">
+            <button class="toggle-pw" type="button" onclick="togglePw('reg-pass',this)">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+          <div class="pw-strength">
+            <div class="pw-strength-bar" id="pw-bar"></div>
+          </div>
+          <div class="pw-hint" id="pw-hint">Escribe una contraseña</div>
+        </div>
+        <div class="form-group">
+          <label>Confirmar contraseña</label>
+          <div class="input-icon-wrap">
+            <input type="password" id="reg-pass2" placeholder="Repite la contraseña" autocomplete="new-password">
+            <button class="toggle-pw" type="button" onclick="togglePw('reg-pass2',this)">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-register" id="btn-register" onclick="doRegister()">Crear cuenta</button>
+
+      <div class="auth-footer">
+        ¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8000' : '';
+
+    const ROLES = {
+      almacenista: {
+        label: 'Monitor de control',
+        desc: 'Puede crear nuevas solicitudes de traspaso de recursos y consultar el historial de movimientos.'
+      },
+      control_obra: {
+        label: 'Control de Obra',
+        desc: 'Puede autorizar o rechazar las solicitudes de traspaso pendientes y consultar el historial.'
+      },
+      residente: {
+        label: 'Residente de Obra',
+        desc: 'Confirma la recepción del material en obra y puede consultar el historial de movimientos.'
+      },
+      administrador: {
+        label: 'Administrador',
+        desc: 'Acceso completo al sistema: gestiona usuarios, permisos y todos los módulos de traspasos.'
+      }
+    };
+
+    function onRolChange() {
+      const rol = document.getElementById('reg-rol').value;
+      const infoEl = document.getElementById('role-info');
+      const empGrp = document.getElementById('empresa-group');
+      if (!rol) {
+        infoEl.classList.remove('visible');
+        empGrp.style.display = 'none';
+        return;
+      }
+      const info = ROLES[rol];
+      infoEl.innerHTML = `<strong>${info.label}</strong>${info.desc}`;
+      infoEl.classList.add('visible');
+      // Show empresa field for operational roles
+      empGrp.style.display = (rol === 'administrador' || rol === 'residente') ? 'none' : 'block';
+    }
+
+    async function fetchEmpresas() {
+      try {
+        const [resEmp, resCc] = await Promise.all([
+          fetch(API_BASE + '/api/public/empresas'),
+          fetch(API_BASE + '/api/public/centros_costo')
+        ]);
+        const dataEmp = await resEmp.json();
+        const dataCc = await resCc.json();
+        
+        const empresas = dataEmp.empresas || dataEmp.desarrollos || [];
+        const ccs = dataCc.centrosCosto || [];
+        
+        const checklist = document.getElementById('reg-empresas-checklist');
+
+        if (ccs.length === 0) {
+          checklist.innerHTML = '<div style="color:#666;font-size:12px">No se encontraron centros de costo</div>';
+          return;
+        }
+
+        // Group CCs by empresa
+        const groups = {};
+        ccs.forEach(cc => {
+          const emp = empresas.find(e => e.id === cc.empresaId);
+          const empNombre = emp ? emp.nombre : cc.empresaId;
+          if (!groups[cc.empresaId]) groups[cc.empresaId] = { nombre: empNombre, ccs: [] };
+          groups[cc.empresaId].ccs.push(cc);
+        });
+
+        let html = '';
+        for (const empId in groups) {
+          const grp = groups[empId];
+          html += `<div style="font-size:12px;font-weight:700;color:#61a60e;margin-top:8px;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px">${grp.nombre}</div>`;
+          grp.ccs.forEach(cc => {
+            html += `
+              <label style="display:flex;align-items:center;gap:10px;color:#ccc;font-size:13px;cursor:pointer;user-select:none;line-height:1.2;margin-left:10px;margin-bottom:4px">
+                <input type="checkbox" name="reg-cc-chk" value="${cc.id}" data-empresa="${cc.empresaId}" style="width:auto;margin:0;cursor:pointer">
+                ${cc.id.substring(0,3)} - ${cc.nombre}
+              </label>`;
+          });
+        }
+
+        checklist.innerHTML = html;
+      } catch (e) {
+        document.getElementById('reg-empresas-checklist').innerHTML =
+          '<div style="color:#e74c3c;font-size:12px">Error al cargar centros de costo</div>';
+      }
+    }
+
+    function togglePw(id, btn) {
+      const input = document.getElementById(id);
+      const isText = input.type === 'text';
+      input.type = isText ? 'password' : 'text';
+      btn.style.color = isText ? '#666' : '#61a60e';
+    }
+
+    function checkStrength() {
+      const pw = document.getElementById('reg-pass').value;
+      const bar = document.getElementById('pw-bar');
+      const hint = document.getElementById('pw-hint');
+      let score = 0;
+      if (pw.length >= 6) score++;
+      if (pw.length >= 10) score++;
+      if (/[A-Z]/.test(pw)) score++;
+      if (/[0-9]/.test(pw)) score++;
+      if (/[^a-zA-Z0-9]/.test(pw)) score++;
+
+      const levels = [
+        { w: '0%', bg: '#333', txt: 'Escribe una contraseña' },
+        { w: '25%', bg: '#c0392b', txt: 'Muy débil' },
+        { w: '50%', bg: '#e67e22', txt: 'Débil' },
+        { w: '75%', bg: '#f1c40f', txt: 'Regular' },
+        { w: '90%', bg: '#61a60e', txt: 'Fuerte' },
+        { w: '100%', bg: '#27ae60', txt: 'Muy fuerte ✓' },
+      ];
+      const lv = levels[Math.min(score, 5)];
+      bar.style.width = lv.w;
+      bar.style.background = lv.bg;
+      hint.textContent = lv.txt;
+      hint.style.color = lv.bg === '#333' ? '#666' : lv.bg;
+    }
+
+    async function doRegister() {
+      const nombre = document.getElementById('reg-nombre').value.trim();
+      const username = document.getElementById('reg-username').value.trim();
+      const correo = document.getElementById('reg-correo').value.trim();
+      const rol = document.getElementById('reg-rol').value;
+
+      const checkedBoxes = document.querySelectorAll('input[name="reg-cc-chk"]:checked');
+      const cc_ids = Array.from(checkedBoxes).map(cb => cb.value).join(',') || null;
+      
+      // Derive empresa_ids from checked CCs
+      const empSet = new Set();
+      checkedBoxes.forEach(cb => empSet.add(cb.getAttribute('data-empresa')));
+      const empresa_id = Array.from(empSet).join(',') || null;
+
+      const pass = document.getElementById('reg-pass').value;
+      const pass2 = document.getElementById('reg-pass2').value;
+
+      const errEl = document.getElementById('reg-error');
+      const succEl = document.getElementById('reg-success');
+      const btn = document.getElementById('btn-register');
+
+      errEl.style.display = 'none';
+      succEl.style.display = 'none';
+
+      if (!nombre || !username || !correo || !rol || !pass) {
+        errEl.textContent = 'Todos los campos son obligatorios.';
+        errEl.style.display = 'block'; return;
+      }
+      if (rol !== 'administrador' && rol !== 'residente' && (!empresa_id || !cc_ids)) {
+        errEl.textContent = 'Debes seleccionar al menos un centro de costo.';
+        errEl.style.display = 'block'; return;
+      }
+      if (pass.length < 6) {
+        errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+        errEl.style.display = 'block'; return;
+      }
+      if (pass !== pass2) {
+        errEl.textContent = 'Las contraseñas no coinciden.';
+        errEl.style.display = 'block'; return;
+      }
+
+      btn.innerHTML = '<span class="spinner"></span>Registrando...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(API_BASE + '/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, username, correo, rol, empresa_id, cc_ids, password: pass })
+        });
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          errEl.textContent = data.error || 'Error al registrar usuario.';
+          errEl.style.display = 'block';
+        } else {
+          succEl.textContent = '¡Cuenta creada exitosamente! Redirigiendo al login...';
+          succEl.style.display = 'block';
+          setTimeout(() => { window.location.href = 'login.html'; }, 2000);
+        }
+      } catch (e) {
+        errEl.textContent = 'No se pudo conectar con el servidor.';
+        errEl.style.display = 'block';
+      }
+
+      btn.innerHTML = 'Crear cuenta';
+      btn.disabled = false;
+    }
+
+    // Load empresas on page load
+    fetchEmpresas();
+  </script>
+
+</body>
+
+</html>

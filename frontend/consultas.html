@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consultas a Base de Datos - Grupo Urban</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --text-color: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --border: rgba(255, 255, 255, 0.1);
+      --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      --glass-blur: blur(10px);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      background-image: radial-gradient(circle at top right, #1e3a8a 0%, transparent 40%),
+                        radial-gradient(circle at bottom left, #312e81 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(to right, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    @media (min-width: 1024px) {
+      .container {
+        grid-template-columns: 350px 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .card h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    select, button {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    select {
+      background-color: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      color: var(--text-color);
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      background-size: 1.2em;
+    }
+
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    }
+
+    select option {
+      background-color: #1e293b;
+      color: #f8fafc;
+    }
+
+    button {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    button:hover {
+      background-color: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .data-table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+    }
+
+    tr:hover {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    td {
+      font-size: 0.95rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+
+    .loader {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Portal de Consultas</h1>
+    <p>Acceso público a catálogos e información de la base de datos</p>
+  </div>
+
+  <div class="container">
+    <!-- Panel Izquierdo: Controles -->
+    <div class="card">
+      <h2>Catálogos</h2>
+      
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-empresas">-</div>
+          <div class="stat-label">Empresas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-insumos">-</div>
+          <div class="stat-label">Insumos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-cc">-</div>
+          <div class="stat-label">C. Costo</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-desarrollos">-</div>
+          <div class="stat-label">Desarrollos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-usuarios">-</div>
+          <div class="stat-label">Usuarios</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="select-entity">Selecciona un catálogo para ver detalles:</label>
+        <select id="select-entity">
+          <option value="empresas">Empresas</option>
+          <option value="centrosCosto">Centros de Costo</option>
+          <option value="insumos">Insumos</option>
+          <option value="desarrollos">Desarrollos</option>
+          <option value="traspasos">Traspasos (Recientes)</option>
+          <option value="usuarios">Usuarios</option>
+        </select>
+      </div>
+
+      <button id="btn-refresh">
+        <span class="loader" id="refresh-loader"></span>
+        <span id="refresh-text">Actualizar Datos</span>
+      </button>
+    </div>
+
+    <!-- Panel Derecho: Datos -->
+    <div class="card">
+      <h2 id="table-title">Detalles: Empresas</h2>
+      <div class="data-table-container">
+        <table id="data-table">
+          <thead>
+            <tr id="table-head">
+              <!-- Dynamically populated -->
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+        <div id="empty-state" class="empty-state">
+          Cargando datos...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let dbState = {};
+
+    const tableTitle = document.getElementById('table-title');
+    const tableHead = document.getElementById('table-head');
+    const tableBody = document.getElementById('table-body');
+    const emptyState = document.getElementById('empty-state');
+    const selectEntity = document.getElementById('select-entity');
+    const dataTable = document.getElementById('data-table');
+
+    async function fetchData() {
+      const loader = document.getElementById('refresh-loader');
+      const text = document.getElementById('refresh-text');
+      
+      loader.style.display = 'inline-block';
+      text.textContent = 'Cargando...';
+
+      try {
+        const [stateResponse, usersResponse] = await Promise.all([
+          fetch('/api/state'),
+          fetch('/api/users')
+        ]);
+        
+        if (!stateResponse.ok) throw new Error('Error al obtener estado');
+        if (!usersResponse.ok) throw new Error('Error al obtener usuarios');
+        
+        dbState = await stateResponse.json();
+        const usersData = await usersResponse.json();
+        
+        // Combine data
+        dbState.usuarios = usersData.users || [];
+        
+        // Update stats
+        document.getElementById('stat-empresas').textContent = dbState.empresas?.length || 0;
+        document.getElementById('stat-insumos').textContent = dbState.insumos?.length || 0;
+        document.getElementById('stat-cc').textContent = dbState.centrosCosto?.length || 0;
+        document.getElementById('stat-desarrollos').textContent = dbState.desarrollos?.length || 0;
+        document.getElementById('stat-usuarios').textContent = dbState.usuarios?.length || 0;
+
+        renderTable();
+      } catch (error) {
+        console.error(error);
+        emptyState.textContent = 'Hubo un error al cargar la información.';
+        emptyState.style.display = 'block';
+        dataTable.style.display = 'none';
+      } finally {
+        loader.style.display = 'none';
+        text.textContent = 'Actualizar Datos';
+      }
+    }
+
+    function renderTable() {
+      const entity = selectEntity.value;
+      const data = dbState[entity] || [];
+
+      // Update Title
+      const titles = {
+        empresas: 'Detalles: Empresas',
+        centrosCosto: 'Detalles: Centros de Costo',
+        insumos: 'Detalles: Insumos',
+        desarrollos: 'Detalles: Desarrollos',
+        traspasos: 'Detalles: Traspasos Recientes',
+        usuarios: 'Detalles: Usuarios'
+      };
+      tableTitle.textContent = titles[entity];
+
+      if (data.length === 0) {
+        emptyState.textContent = 'No hay datos para mostrar en esta categoría.';
+        emptyState.style.display = 'block';
+        dataTable.style.display = 'none';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      dataTable.style.display = 'table';
+
+      // Setup columns based on entity
+      let columns = [];
+      if (entity === 'empresas') columns = ['ID', 'Nombre', 'RFC'];
+      else if (entity === 'centrosCosto') columns = ['ID', 'Desarrollo', 'Nombre Centro de Costo', 'Dirección'];
+      else if (entity === 'insumos') columns = ['ID', 'Clave', 'Nombre', 'Unidad', 'Categoría'];
+      else if (entity === 'desarrollos') columns = ['ID', 'Nombre'];
+      else if (entity === 'traspasos') columns = ['Folio', 'Fecha', 'Origen', 'Destino', 'Estatus'];
+      else if (entity === 'usuarios') columns = ['ID', 'Nombre', 'Usuario', 'Correo', 'Rol', 'Activo', 'Creación'];
+
+      // Render Header
+      tableHead.innerHTML = '';
+      columns.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col;
+        tableHead.appendChild(th);
+      });
+
+      // Render Body
+      tableBody.innerHTML = '';
+      data.forEach(item => {
+        const tr = document.createElement('tr');
+        
+        if (entity === 'empresas') {
+          tr.innerHTML = `<td>${item.id}</td><td>${item.nombre}</td><td>${item.rfc || 'N/A'}</td>`;
+        } else if (entity === 'centrosCosto') {
+          const desarrollo = dbState.desarrollos?.find(d => d.id === item.empresaId);
+          const desarrolloNombre = desarrollo ? desarrollo.nombre : item.empresaId;
+          tr.innerHTML = `<td>${item.id}</td><td><span style="color: #a78bfa; font-weight: 500;">${desarrolloNombre}</span></td><td>${item.nombre}</td><td>${item.direccion || 'N/A'}</td>`;
+        } else if (entity === 'insumos') {
+          tr.innerHTML = `<td>${item.id}</td><td>${item.clave || item.id}</td><td>${item.nombre}</td><td>${item.unidad || 'N/A'}</td><td>${item.categoria || 'N/A'}</td>`;
+        } else if (entity === 'desarrollos') {
+          tr.innerHTML = `<td>${item.id}</td><td>${item.nombre}</td>`;
+        } else if (entity === 'traspasos') {
+          tr.innerHTML = `<td>${item.folio}</td><td>${item.fecha || 'N/A'}</td><td>${item.ccOrigenId}</td><td>${item.ccDestinoId}</td><td>${item.estado}</td>`;
+        } else if (entity === 'usuarios') {
+          const rolBadge = `<span style="background: rgba(59,130,246,0.2); padding: 4px 8px; border-radius: 12px; font-size: 0.8em; color: #60a5fa; white-space: nowrap;">${item.rol}</span>`;
+          const date = item.creado_en ? new Date(item.creado_en).toLocaleString() : 'N/A';
+          const activeStr = item.activo ? '<span style="color: #4ade80;">Sí</span>' : '<span style="color: #f87171;">No</span>';
+          tr.innerHTML = `<td>${item.id}</td><td>${item.nombre}</td><td>${item.username}</td><td>${item.correo}</td><td>${rolBadge}</td><td>${activeStr}</td><td>${date}</td>`;
+        }
+        
+        tableBody.appendChild(tr);
+      });
+    }
+
+    // Event Listeners
+    selectEntity.addEventListener('change', renderTable);
+    document.getElementById('btn-refresh').addEventListener('click', fetchData);
+
+    // Initial fetch
+    fetchData();
+
+  </script>
+</body>
+</html>
