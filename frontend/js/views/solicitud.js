@@ -391,6 +391,7 @@ function guardarSolicitud() {
   if (!ccOri)                                           return alert('Seleccione el centro de costo de origen');
   if (!ccDes)                                           return alert('Seleccione el centro de costo de destino');
   if (ccOri === ccDes)                                  return alert('El origen y destino no pueden ser iguales');
+  if (empOri === empDes && empOri !== '99')              return alert('No se pueden hacer traspasos dentro de la misma empresa. Solo la empresa 99 permite traspasos internos.');
   if (solicitudItems.length === 0)                      return alert('Agregue al menos un insumo');
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
   if (solicitudItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
