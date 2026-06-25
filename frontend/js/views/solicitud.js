@@ -288,7 +288,7 @@ function renderItems() {
     if (isSaldos && item.cantidad > 0) {
       if (!item.detalles) item.detalles = [];
       const cant = Math.floor(item.cantidad);
-      while(item.detalles.length < cant) item.detalles.push({precio: 0, comentario: ''});
+      while(item.detalles.length < cant) item.detalles.push({precio: 0, comentario: '', imagen: ''});
       while(item.detalles.length > cant) item.detalles.pop();
     }
 
@@ -330,8 +330,14 @@ function renderItems() {
     if (isSaldos && item.cantidad > 0) {
       html += `<tr><td colspan="4" style="padding:0"><div style="background:#f8fafc;padding:10px 20px;border-bottom:1px solid #eee">`;
       for(let d=0; d<Math.floor(item.cantidad); d++) {
+         const thumb = item.detalles[d].imagen ? `<img src="${item.detalles[d].imagen}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${item.detalles[d].imagen}')">` : '';
          html += `<div style="display:flex;gap:10px;margin-bottom:6px;align-items:center">
              <span style="font-size:11px;font-weight:700;color:#666;width:20px">#${d+1}</span>
+             <label style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#e2e8f0;border-radius:4px;color:#64748b" title="Subir Foto">
+               📸
+               <input type="file" accept="image/*" style="display:none" onchange="subirFotoSaldos(${i}, ${d}, this)">
+             </label>
+             <div id="thumb-${i}-${d}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center">${thumb}</div>
              <input type="text" placeholder="Descripción obligatoria del artículo..." value="${(item.detalles[d].comentario || '').replace(/"/g, '&quot;')}" 
                     onchange="solicitudItems[${i}].detalles[${d}].comentario = this.value"
                     style="flex:1;border:1px solid #ccc;padding:4px 8px;font-size:11px;border-radius:4px">
@@ -407,7 +413,8 @@ function guardarSolicitud() {
                insumoId: item.insumoId,
                cantidad: 1,
                precio: det.precio || 0,
-               comentario: det.comentario || ''
+               comentario: det.comentario || '',
+               imagen: det.imagen || ''
             });
          });
        }
@@ -464,4 +471,62 @@ function guardarSolicitud() {
   </div>`;
 
   updateBadges();
+}
+
+async function subirFotoSaldos(i, d, input) {
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  const thumbDiv = document.getElementById(`thumb-${i}-${d}`);
+  thumbDiv.innerHTML = '<span style="font-size:10px">⏳</span>';
+  
+  try {
+    const b64 = await resizeAndCompressImage(file, 800);
+    const token = sessionStorage.getItem('gu_token') || '';
+    
+    const res = await fetch(API_BASE + '/api/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ image: b64 })
+    });
+    
+    if (!res.ok) throw new Error('Error al subir');
+    const data = await res.json();
+    
+    solicitudItems[i].detalles[d].imagen = data.url;
+    thumbDiv.innerHTML = `<img src="${data.url}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${data.url}')">`;
+  } catch (err) {
+    console.error(err);
+    alert('Error al subir la imagen');
+    thumbDiv.innerHTML = '❌';
+  }
+}
+
+function resizeAndCompressImage(file, maxWidth) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = event => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = err => reject(err);
+    };
+    reader.onerror = err => reject(err);
+  });
 }

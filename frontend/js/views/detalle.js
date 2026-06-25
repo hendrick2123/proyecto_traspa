@@ -5,9 +5,10 @@
 /** Renders a compact items table inside the detail modal */
 function resumenItems(t) {
   const hasExtra = t.items.some(i => i.precio > 0 || i.comentario);
+  const hasImg = t.items.some(i => i.imagen);
   return `<div class="items-table-wrap">
     <table>
-      <thead><tr><th>Clave</th><th>Insumo</th>${hasExtra ? '<th>Descripción</th>' : ''}<th>Cantidad</th><th>Unidad</th>${hasExtra ? '<th>Precio Unit.</th>' : ''}</tr></thead>
+      <thead><tr><th>Clave</th><th>Insumo</th>${hasExtra ? '<th>Descripción</th>' : ''}<th>Cantidad</th><th>Unidad</th>${hasExtra ? '<th>Precio Unit.</th>' : ''}${hasImg ? '<th>Foto</th>' : ''}</tr></thead>
       <tbody>
         ${t.items.map(i => {
           const ins = getInsumo(i.insumoId);
@@ -18,6 +19,7 @@ function resumenItems(t) {
             <td class="text-sm">${i.cantidad}</td>
             <td class="text-sm">${ins.unidad}</td>
             ${hasExtra ? `<td class="text-sm">$${parseFloat(i.precio||0).toFixed(2)}</td>` : ''}
+            ${hasImg ? `<td class="text-sm">${i.imagen ? `<img src="${i.imagen}" style="height:32px;border-radius:4px;cursor:pointer" onclick="window.open('${i.imagen}')" title="Ver foto">` : '—'}</td>` : ''}
           </tr>`;
         }).join('')}
       </tbody>

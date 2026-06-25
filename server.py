@@ -320,6 +320,7 @@ def init_traspasos_tables():
                     ON DELETE CASCADE
             );
         """)
+        cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS imagen TEXT DEFAULT '';")
         conn.commit()
         cur.close()
         conn.close()
@@ -456,7 +457,7 @@ def get_db_traspasos(conn=None):
 
         # Cargar detalles de insumos agrupados por id_solicitud
         cur.execute("""
-            SELECT id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo
+            SELECT id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen
             FROM testing.detalle_traspaso_insumos_v2
             ORDER BY id_detalle;
         """)
@@ -475,7 +476,8 @@ def get_db_traspasos(conn=None):
                 "cantidad":  float(d[3]),
                 "unidad":    d[4],
                 "precio":    float(d[5]) if d[5] is not None else 0.0,
-                "comentario": d[6] or ""
+                "comentario": d[6] or "",
+                "imagen": d[7] or ""
             })
 
         traspasos = []
@@ -589,8 +591,8 @@ def save_db_traspaso(t, conn=None):
                 nombre = item.get("nombre", item.get("insumoId", ""))
                 cur.execute("""
                     INSERT INTO testing.detalle_traspaso_insumos_v2
-                        (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s);
+                        (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
                 """, (
                     sol_id,
                     item.get("insumoId", ""),
@@ -598,7 +600,8 @@ def save_db_traspaso(t, conn=None):
                     item.get("cantidad", 0),
                     item.get("unidad", "Pieza"),
                     item.get("precio", 0.0),
-                    item.get("comentario", "")
+                    item.get("comentario", ""),
+                    item.get("imagen", "")
                 ))
 
         conn.commit()
@@ -1099,6 +1102,41 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 self._json(500, {"error": str(e)})
                 print(f"Server Error: {e}", file=sys.stderr, flush=True)
+            return
+
+        # ── POST /api/upload ──
+        if path == '/api/upload':
+            user = self._get_authenticated_user()
+            if not user:
+                self._json(401, {"error": "No autorizado. Inicie sesión nuevamente."})
+                return
+            try:
+                body = self._read_body()
+                b64_data = body.get('image', '')
+                if not b64_data or ',' not in b64_data:
+                    self._json(400, {"error": "Imagen no válida."})
+                    return
+                
+                header, encoded = b64_data.split(',', 1)
+                import base64
+                import time
+                import uuid
+                file_ext = "jpg"
+                if "png" in header: file_ext = "png"
+                elif "webp" in header: file_ext = "webp"
+                
+                file_name = f"img_{int(time.time())}_{uuid.uuid4().hex[:6]}.{file_ext}"
+                upload_dir = os.path.join(FRONTEND_DIR, 'uploads')
+                os.makedirs(upload_dir, exist_ok=True)
+                file_path = os.path.join(upload_dir, file_name)
+                
+                with open(file_path, "wb") as fh:
+                    fh.write(base64.b64decode(encoded))
+                    
+                self._json(200, {"url": f"/uploads/{file_name}"})
+            except Exception as e:
+                print(f"Error en upload: {e}", file=sys.stderr, flush=True)
+                self._json(500, {"error": str(e)})
             return
 
         self._json(404, {"error": "Endpoint no encontrado."})
