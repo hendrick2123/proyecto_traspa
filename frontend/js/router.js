@@ -8,6 +8,7 @@ const VIEWS = {
   'autorizacion':   { title: 'Autorización de Traspasos',    render: renderAutorizacion },
   'recepcion':      { title: 'Recepción de Material',        render: renderRecepcion },
   'historial':      { title: 'Historial de Movimientos',     render: renderHistorial },
+  'historial-proceso': { title: 'Historial de Proceso',      render: renderHistorialProceso },
   'devolucion':     { title: 'Nueva Devolución',             render: renderDevolucion },
   'empresas':       { title: 'Empresas',                     render: renderEmpresas },
   'centros-costo':  { title: 'Centros de Costo',             render: renderCentrosCosto },
