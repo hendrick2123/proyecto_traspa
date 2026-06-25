@@ -92,6 +92,8 @@ table tr:last-child td{border-bottom:none}
 .badge-draft{background:#e2e3e5;color:#383d41}
 .badge-loan{background:#e8d5f5;color:#6f2fa0}
 .badge-obra{background:#d5e8f5;color:#155e87}
+.badge-partial{background:#fff0b3;color:#7a5800}
+.badge-returned{background:#c8f7d0;color:#0a5e1f}
 
 /* ===== MODAL ===== */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}

@@ -442,7 +442,8 @@ def get_db_traspasos(conn=None):
                    fecha_solicitud, observaciones,
                    autorizador, fecha_autorizacion, comentario_auth,
                    receptor, fecha_recepcion, comentario_rec,
-                   autorizador2, fecha_autorizacion2, comentario_auth2
+                   autorizador2, fecha_autorizacion2, comentario_auth2,
+                   folio_original_ref
             FROM testing.solicitudes_traspasos_v2
             ORDER BY id_solicitud;
         """)
@@ -501,6 +502,7 @@ def get_db_traspasos(conn=None):
                 "autorizador2":      r[17],
                 "fechaAutorizacion2":r[18].isoformat() if r[18] else None,
                 "comentarioAuth2":   r[19],
+                "folioOriginalRef":  r[20] or "",
                 "items":             items_map.get(sid, []),
                 "_dbId":             sid,
             })
@@ -538,7 +540,8 @@ def save_db_traspaso(t, conn=None):
                     observaciones     = %s,
                     autorizador2      = %s,
                     fecha_autorizacion2 = %s,
-                    comentario_auth2  = %s
+                    comentario_auth2  = %s,
+                    folio_original_ref = %s
                 WHERE id_solicitud = %s;
             """, (
                 t.get("status", "pendiente"),
@@ -552,6 +555,7 @@ def save_db_traspaso(t, conn=None):
                 t.get("autorizador2"),
                 t.get("fechaAutorizacion2"),
                 t.get("comentarioAuth2"),
+                t.get("folioOriginalRef", None),
                 sol_id,
             ))
         else:
@@ -560,8 +564,8 @@ def save_db_traspaso(t, conn=None):
                 INSERT INTO testing.solicitudes_traspasos_v2
                     (folio, tipo_traspaso, solicitante, estado,
                      empresa_origen, empresa_destino, cc_origen, cc_destino,
-                     fecha_solicitud, observaciones)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     fecha_solicitud, observaciones, folio_original_ref)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id_solicitud;
             """, (
                 t["folio"],
@@ -574,6 +578,7 @@ def save_db_traspaso(t, conn=None):
                 t.get("ccDestino", ""),
                 t.get("fechaSolicitud", None),
                 t.get("observaciones", ""),
+                t.get("folioOriginalRef", None),
             ))
             sol_id = cur.fetchone()[0]
 

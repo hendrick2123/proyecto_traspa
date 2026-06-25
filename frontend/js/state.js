@@ -163,7 +163,7 @@ function tipoBadge(tipo) {
 }
 
 function statusBadge(s) {
-  const map    = { pendiente:'badge-pending', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft' };
-  const labels = { pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador' };
+  const map    = { pendiente:'badge-pending', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft', devuelto_parcial:'badge-partial', devuelto_total:'badge-returned' };
+  const labels = { pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
   return `<span class="badge ${map[s] || ''}">${labels[s] || s}</span>`;
 }
