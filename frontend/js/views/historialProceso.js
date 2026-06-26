@@ -148,35 +148,205 @@ function filtrarHistorialProceso() {
   });
 }
 
-function exportarExcel() {
-  if (typeof XLSX === 'undefined') {
-    alert('Cargando biblioteca de Excel, por favor intenta en un momento...');
+async function exportarExcel() {
+  if (typeof ExcelJS === 'undefined') {
+    alert('Cargando biblioteca de Excel, por favor intenta de nuevo en unos segundos...');
     return;
   }
-  
+
   const table = document.getElementById('hp-tabla');
   if (!table) return;
-  
-  // Clonar tabla para remover columnas interactivas (como fotos/enlaces) antes de exportar
-  const clone = table.cloneNode(true);
-  
-  // Remover la última columna ("Foto") de la cabecera
-  const ths = clone.querySelectorAll('thead th');
-  if (ths.length > 0) {
-    ths[ths.length - 1].remove();
-  }
-  
-  // Remover la última celda de cada fila en el cuerpo de la tabla
-  const rows = clone.querySelectorAll('tbody tr');
-  rows.forEach(row => {
-    const tds = row.querySelectorAll('td');
-    if (tds.length > 0) {
-      tds[tds.length - 1].remove();
-    }
-  });
 
-  const wb = XLSX.utils.table_to_book(clone, { sheet: "Inventario CC 999" });
-  
-  // Guardar y descargar el archivo Excel real (.xlsx)
-  XLSX.writeFile(wb, `Inventario_CC999_${new Date().toISOString().slice(0,10)}.xlsx`);
+  const btn = document.querySelector('button[onclick="exportarExcel()"]');
+  const originalBtnHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.innerHTML = '⏳ Generando Excel...';
+    btn.disabled = true;
+  }
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Inventario CC 999');
+
+    // Activar líneas de cuadrícula
+    worksheet.views = [{ showGridLines: true }];
+
+    // 1. Título del Reporte
+    worksheet.mergeCells('A1:M1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = 'Reporte de Inventario - Centro de Costo 999 (Saldos Iniciales)';
+    titleCell.font = { name: 'Montserrat', family: 4, size: 16, bold: true, color: { argb: 'FFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '16A34A' } }; // Verde Grupo Urbania
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    worksheet.getRow(1).height = 40;
+
+    // Fila vacía de separación
+    worksheet.addRow([]);
+    worksheet.getRow(2).height = 15;
+
+    // 2. Definir Columnas y Encabezados
+    const headers = [
+      '#', 'Fecha', 'Folio', 'Tipo', 'CC Origen', 'CC Destino', 'Clave Insumo', 
+      'Descripción Insumo', 'Unidad', 'Cant.', 'Precio Unit.', 'Detalle / Comentario', 'Foto'
+    ];
+    worksheet.getRow(3).values = headers;
+    worksheet.getRow(3).height = 28;
+    
+    // Formato de cabecera
+    for (let c = 1; c <= headers.length; c++) {
+      const cell = worksheet.getCell(3, c);
+      cell.font = { name: 'Montserrat', family: 4, size: 10, bold: true, color: { argb: '333333' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } }; // Gris claro
+      cell.alignment = { vertical: 'middle', horizontal: c === 1 || c === 2 || c === 4 || c === 9 || c === 13 ? 'center' : 'left' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'CBD5E1' } },
+        bottom: { style: 'medium', color: { argb: '94A3B8' } },
+        left: { style: 'thin', color: { argb: 'E2E8F0' } },
+        right: { style: 'thin', color: { argb: 'E2E8F0' } }
+      };
+    }
+
+    // 3. Procesar Filas de Datos
+    const rows = table.querySelectorAll('tbody tr');
+    let excelRowIndex = 4;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const tds = row.querySelectorAll('td');
+      if (tds.length === 0) continue;
+
+      const idxValue = tds[0].textContent.trim();
+      const fechaValue = tds[1].textContent.trim();
+      const folioValue = tds[2].textContent.trim();
+      const tipoValue = tds[3].textContent.trim();
+      const ccOriValue = tds[4].textContent.trim();
+      const ccDesValue = tds[5].textContent.trim();
+      const claveValue = tds[6].textContent.trim();
+      const insumoValue = tds[7].textContent.trim();
+      const unidadValue = tds[8].textContent.trim();
+      const cantValue = parseFloat(tds[9].textContent.trim()) || 0;
+      const precioValue = parseFloat(tds[10].textContent.replace(/[$,]/g, '').trim()) || 0;
+      const comentarioValue = tds[11].textContent.trim();
+      
+      // Obtener imagen
+      const imgEl = tds[12].querySelector('img');
+      const imgUrl = imgEl ? imgEl.getAttribute('src') : null;
+
+      const newRow = worksheet.addRow([
+        parseInt(idxValue) || idxValue,
+        fechaValue,
+        folioValue,
+        tipoValue,
+        ccOriValue,
+        ccDesValue,
+        claveValue,
+        insumoValue,
+        unidadValue,
+        cantValue,
+        precioValue,
+        comentarioValue === '—' ? '' : comentarioValue,
+        '' // Celda vacía para colocar la imagen encima
+      ]);
+
+      // Altura de fila: si hay imagen, la hacemos más alta (ej. 65), si no, normal (22)
+      newRow.height = imgUrl ? 65 : 22;
+
+      // Estilo de celdas
+      for (let c = 1; c <= headers.length; c++) {
+        const cell = worksheet.getCell(excelRowIndex, c);
+        cell.font = { name: 'Montserrat', family: 4, size: 9 };
+        cell.alignment = { 
+          vertical: 'middle', 
+          horizontal: c === 1 || c === 2 || c === 4 || c === 9 || c === 13 ? 'center' : 'left' 
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'F1F5F9' } },
+          bottom: { style: 'thin', color: { argb: 'E2E8F0' } },
+          left: { style: 'thin', color: { argb: 'F1F5F9' } },
+          right: { style: 'thin', color: { argb: 'F1F5F9' } }
+        };
+
+        // Formato para columna de precio
+        if (c === 11) {
+          cell.numFmt = '"$"#,##0.00';
+        }
+      }
+
+      // 4. Descargar e incrustar la imagen si existe
+      if (imgUrl) {
+        try {
+          // Descargar imagen
+          const response = await fetch(imgUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            
+            // Convertir blob a base64
+            const base64Data = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+
+            // Extraer tipo de imagen
+            const matches = base64Data.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
+            if (matches) {
+              const ext = matches[1];
+              const rawBase64 = matches[2];
+              
+              const imageId = workbook.addImage({
+                base64: rawBase64,
+                extension: ext === 'jpg' ? 'jpeg' : ext
+              });
+
+              // Agregar imagen a la hoja de cálculo centrándola en la celda
+              worksheet.addImage(imageId, {
+                tl: { col: 12, row: excelRowIndex - 1 }, // 0-indexed en ExcelJS
+                ext: { width: 60, height: 60 },
+                editAs: 'oneCell'
+              });
+            }
+          }
+        } catch (imgError) {
+          console.error("Error cargando imagen para el Excel:", imgUrl, imgError);
+        }
+      }
+
+      excelRowIndex++;
+    }
+
+    // 5. Configurar anchos de columna automáticamente
+    worksheet.columns.forEach((column, i) => {
+      let maxLen = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        if (cell.row > 1 && cell.value) {
+          maxLen = Math.max(maxLen, cell.value.toString().length);
+        }
+      });
+      // Dar un margen extra a los anchos
+      const colWidths = [6, 14, 22, 14, 12, 12, 14, 32, 10, 10, 14, 30, 12];
+      column.width = Math.max(colWidths[i] || 10, maxLen + 3);
+    });
+
+    // 6. Generar el buffer del archivo y disparar descarga
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileBlob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(fileBlob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Inventario_CC999_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error("Error al exportar a Excel:", err);
+    alert("Ocurrió un error al generar el archivo Excel.");
+  } finally {
+    if (btn) {
+      btn.innerHTML = originalBtnHtml;
+      btn.disabled = false;
+    }
+  }
 }
