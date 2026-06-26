@@ -68,6 +68,10 @@ function renderHistorialProceso() {
           <input type="text" id="hp-buscar" placeholder="Buscar por clave, nombre o comentario..." 
                  oninput="filtrarHistorialProceso()" 
                  style="border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;width:280px;font-family:'Montserrat',sans-serif">
+          <button onclick="exportarExcel()" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;padding:7px 12px;font-size:12px;font-weight:600">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Exportar a Excel
+          </button>
           <span style="font-size:11px;font-weight:700;color:#888;white-space:nowrap">${rows.length} registros</span>
         </div>
       </div>
@@ -142,4 +146,37 @@ function filtrarHistorialProceso() {
     const data = fila.getAttribute('data-search') || '';
     fila.style.display = (!query || data.includes(query)) ? '' : 'none';
   });
+}
+
+function exportarExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('Cargando biblioteca de Excel, por favor intenta en un momento...');
+    return;
+  }
+  
+  const table = document.getElementById('hp-tabla');
+  if (!table) return;
+  
+  // Clonar tabla para remover columnas interactivas (como fotos/enlaces) antes de exportar
+  const clone = table.cloneNode(true);
+  
+  // Remover la última columna ("Foto") de la cabecera
+  const ths = clone.querySelectorAll('thead th');
+  if (ths.length > 0) {
+    ths[ths.length - 1].remove();
+  }
+  
+  // Remover la última celda de cada fila en el cuerpo de la tabla
+  const rows = clone.querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    const tds = row.querySelectorAll('td');
+    if (tds.length > 0) {
+      tds[tds.length - 1].remove();
+    }
+  });
+
+  const wb = XLSX.utils.table_to_book(clone, { sheet: "Inventario CC 999" });
+  
+  // Guardar y descargar el archivo Excel real (.xlsx)
+  XLSX.writeFile(wb, `Inventario_CC999_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
