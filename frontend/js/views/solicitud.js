@@ -409,9 +409,12 @@ function guardarSolicitud() {
   if (isSaldos) {
     solicitudItems.forEach(item => {
        if (item.detalles && item.detalles.length > 0) {
+         const ins = getInsumo(item.insumoId);
          item.detalles.forEach(det => {
             itemsToSave.push({
                insumoId: item.insumoId,
+               nombre: ins ? ins.nombre : '',
+               unidad: ins ? ins.unidad : 'Pieza',
                cantidad: 1,
                precio: det.precio || 0,
                comentario: det.comentario || '',
@@ -421,9 +424,25 @@ function guardarSolicitud() {
        }
     });
   } else if (isSalidaSaldos) {
-    itemsToSave = solicitudItems.map(i => ({ ...i, precio: 0, comentario: '' }));
+    itemsToSave = solicitudItems.map(i => {
+      const ins = getInsumo(i.insumoId);
+      return {
+        ...i,
+        nombre: ins ? ins.nombre : '',
+        unidad: ins ? ins.unidad : 'Pieza',
+        precio: 0,
+        comentario: ''
+      };
+    });
   } else {
-    itemsToSave = solicitudItems.map(i => ({ ...i }));
+    itemsToSave = solicitudItems.map(i => {
+      const ins = getInsumo(i.insumoId);
+      return {
+        ...i,
+        nombre: ins ? ins.nombre : '',
+        unidad: ins ? ins.unidad : 'Pieza'
+      };
+    });
   }
 
   const folio = genFolio(tipo);

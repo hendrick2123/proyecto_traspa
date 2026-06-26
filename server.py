@@ -320,6 +320,8 @@ def init_traspasos_tables():
                     ON DELETE CASCADE
             );
         """)
+        cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS precio NUMERIC(12, 4) DEFAULT 0;")
+        cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS comentario_insumo TEXT DEFAULT '';")
         cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS imagen TEXT DEFAULT '';")
         conn.commit()
         cur.close()
@@ -587,21 +589,45 @@ def save_db_traspaso(t, conn=None):
             # INSERT detalle insumos
             items = t.get("items", [])
             for item in items:
-                # Buscar nombre del insumo si no viene
-                nombre = item.get("nombre", item.get("insumoId", ""))
+                insumo_id = item.get("insumoId", "")
+                nombre = item.get("nombre", "")
+                unidad = item.get("unidad", "")
+
+                # Buscar en catálogo si falta nombre o unidad
+                if not nombre or not unidad or nombre == insumo_id:
+                    try:
+                        cur.execute("SELECT descripcion, unidad FROM testing.prof_insumos_v2 WHERE insumo = %s LIMIT 1;", (insumo_id,))
+                        row = cur.fetchone()
+                        if row:
+                            if not nombre or nombre == insumo_id:
+                                nombre = row[0]
+                            if not unidad:
+                                unidad = row[1]
+                    except Exception as e:
+                        print(f"DB Error lookup insumo {insumo_id}: {e}", flush=True)
+
+                if not nombre:
+                    nombre = insumo_id
+                if not unidad:
+                    unidad = "Pieza"
+
+                precio_val = item.get("precio", 0.0)
+                comentario_val = item.get("comentario", "")
+                imagen_val = item.get("imagen", "")
+                print(f"  DB INSERT detalle: clave={insumo_id} cant={item.get('cantidad',0)} precio={precio_val} comentario='{comentario_val[:30]}' imagen={'SI' if imagen_val else 'NO'}", flush=True)
                 cur.execute("""
                     INSERT INTO testing.detalle_traspaso_insumos_v2
                         (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
                 """, (
                     sol_id,
-                    item.get("insumoId", ""),
+                    insumo_id,
                     nombre,
                     item.get("cantidad", 0),
-                    item.get("unidad", "Pieza"),
-                    item.get("precio", 0.0),
-                    item.get("comentario", ""),
-                    item.get("imagen", "")
+                    unidad,
+                    precio_val,
+                    comentario_val,
+                    imagen_val
                 ))
 
         conn.commit()

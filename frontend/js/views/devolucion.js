@@ -257,11 +257,15 @@ function guardarDevolucion() {
     ccDestino:         devDes,
     observaciones:     obs,
     folioOriginalRef:  devOriginalFolio,  // <-- Ligado al folio del PRS/GAR original
-    items:             devItems.map(i => ({
-      insumoId: i.insumoId,
-      cantidad: i.cantidad,
-      unidad:   i.unidad || ''
-    })),
+    items:             devItems.map(i => {
+      const ins = getInsumo(i.insumoId);
+      return {
+        insumoId: i.insumoId,
+        nombre:   ins ? ins.nombre : '',
+        cantidad: i.cantidad,
+        unidad:   ins ? ins.unidad : 'Pieza'
+      };
+    }),
     fechaSolicitud:    now(),
     autorizador:       null,
     fechaAutorizacion: null,
