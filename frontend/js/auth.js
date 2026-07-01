@@ -4,7 +4,7 @@
 
 // Mapeo de roles a etiquetas legibles
 const ROL_LABELS = {
-  almacenista:   'Monitos de compras',
+  almacenista:   'Monitor de control',
   control_obra:  'Control de Obra',
   residente:     'Residente',
   administrador: 'Administrador'

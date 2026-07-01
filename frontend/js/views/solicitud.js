@@ -335,7 +335,7 @@ function renderItems() {
              <span style="font-size:11px;font-weight:700;color:#666;width:20px">#${d+1}</span>
              <label style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#e2e8f0;border-radius:4px;color:#64748b" title="Subir Foto">
                📸
-               <input type="file" accept="image/*" style="display:none" onchange="subirFotoSaldos(${i}, ${d}, this)">
+               <input type="file" accept="image/jpeg, image/png, image/jpg" style="display:none" onchange="subirFotoSaldos(${i}, ${d}, this)">
              </label>
              <div id="thumb-${i}-${d}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center">${thumb}</div>
              <input type="text" placeholder="Descripción obligatoria del artículo..." value="${(item.detalles[d].comentario || '').replace(/"/g, '&quot;')}" 
@@ -391,7 +391,7 @@ function guardarSolicitud() {
   if (!ccOri)                                           return alert('Seleccione el centro de costo de origen');
   if (!ccDes)                                           return alert('Seleccione el centro de costo de destino');
   if (ccOri === ccDes && ccOri !== '999')                return alert('El origen y destino no pueden ser iguales');
-  if (empOri === empDes && empOri !== '99')              return alert('No se pueden hacer traspasos dentro de la misma empresa. Solo la empresa 99 permite traspasos internos.');
+
   if (solicitudItems.length === 0)                      return alert('Agregue al menos un insumo');
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
   if (solicitudItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
@@ -496,6 +496,11 @@ function guardarSolicitud() {
 async function subirFotoSaldos(i, d, input) {
   if (!input.files || input.files.length === 0) return;
   const file = input.files[0];
+  if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
+    alert('Solo se permiten imágenes en formato JPG o PNG');
+    input.value = '';
+    return;
+  }
   const thumbDiv = document.getElementById(`thumb-${i}-${d}`);
   thumbDiv.innerHTML = '<span style="font-size:10px">⏳</span>';
   
