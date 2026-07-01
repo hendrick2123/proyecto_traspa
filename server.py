@@ -372,12 +372,7 @@ def get_db_centros_costo():
             FROM testing.prof_centros_costo cc
             LEFT JOIN testing.prof_empresas emp
                 ON cc.source = emp.source
-            WHERE SUBSTRING(cc.id_cc FROM 1 FOR 3) IN (
-                '112','212','312','412','512','612','712',
-                '113','213','313','413','513','613','713',
-                '118','218','318','418','518','618','718',
-                '150','250','350','450','550','650','750'
-            )
+            WHERE SUBSTRING(cc.id_cc FROM 1 FOR 3) ~ '^[1-9A-Za-z](12|13|18|50)$'
             ORDER BY cc.nombre_cc;
         """
         cur.execute(query)
