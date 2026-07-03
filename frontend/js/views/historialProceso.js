@@ -2,62 +2,14 @@
 // VIEW – Historial de Proceso (Inventario CC 999)
 // =====================================================
 
+let hpPage = 1;
+const hpLimit = 25;
+let hpTotal = 0;
+
 function renderHistorialProceso() {
-  const content = document.getElementById('content');
-
-  // 1. Filtrar solo traspasos relacionados con CC 999
-  const traspasos999 = S.traspasos.filter(t => t.ccOrigen === '999' || t.ccDestino === '999');
-
-  if (traspasos999.length === 0) {
-    content.innerHTML = `
-      <div class="empty-state">
-        <div style="font-size:40px;margin-bottom:12px">📦</div>
-        <p>No hay movimientos registrados para el CC 999</p>
-        <span>Aún no se han realizado traspasos desde o hacia Saldos Iniciales.</span>
-      </div>`;
-    return;
-  }
-
-  // 2. Extraer cada insumo individual de cada traspaso
-  let rows = [];
-  traspasos999.forEach(t => {
-    const ccOriObj = S.centrosCosto.find(c => c.id === t.ccOrigen);
-    const ccDesObj = S.centrosCosto.find(c => c.id === t.ccDestino);
-    const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
-    const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
-
-    t.items.forEach((item, idx) => {
-      const ins = getInsumo(item.insumoId);
-      rows.push({
-        fecha: t.fechaSolicitud || '',
-        folio: t.folio,
-        id: t.id,
-        tipo: t.tipo,
-        status: t.status,
-        ccOrigen: t.ccOrigen,
-        ccOrigenNombre: ccOriNombre,
-        ccDestino: t.ccDestino,
-        ccDestinoNombre: ccDesNombre,
-        clave: ins ? ins.clave : item.insumoId,
-        nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
-        unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
-        cantidad: item.cantidad || 0,
-        precio: item.precio || 0,
-        comentario: item.comentario || '',
-        imagen: item.imagen || ''
-      });
-    });
-  });
-
-  // 3. Ordenar por fecha (más reciente primero)
-  rows.sort((a, b) => {
-    const dA = new Date(a.fecha);
-    const dB = new Date(b.fecha);
-    return dB - dA;
-  });
-
-  // 4. Renderizar
-  let html = `
+  hpPage = 1;
+  
+  document.getElementById('content').innerHTML = `
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -72,71 +24,174 @@ function renderHistorialProceso() {
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Exportar a Excel
           </button>
-          <span style="font-size:11px;font-weight:700;color:#888;white-space:nowrap">${rows.length} registros</span>
+          <span style="font-size:11px;font-weight:700;color:#888;white-space:nowrap" id="hp-total-count">Cargando...</span>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="table-wrap">
-        <table id="hp-tabla">
-          <thead>
-            <tr>
-              <th style="width:40px">#</th>
-              <th>Fecha</th>
-              <th>Folio</th>
-              <th>Tipo</th>
-              <th>CC Origen</th>
-              <th>CC Destino</th>
-              <th>Clave</th>
-              <th>Insumo</th>
-              <th>Unidad</th>
-              <th>Cant.</th>
-              <th>Precio</th>
-              <th>Descripción</th>
-              <th>Foto</th>
-            </tr>
-          </thead>
-          <tbody id="hp-tbody">
-  `;
-
-  rows.forEach((r, idx) => {
-    const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
-    const tipoBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
-                    : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
-                    : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
-                    : `<span class="badge badge-draft">${r.tipo}</span>`;
-    const fotoHtml = r.imagen
-      ? `<img src="${r.imagen}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0" onclick="window.open('${r.imagen}')" title="Ver foto">`
-      : '<span style="color:#ccc;font-size:11px">—</span>';
-
-    html += `
-            <tr class="hp-row" 
-                data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
-              <td class="text-sm" style="color:#aaa;font-weight:700">${idx + 1}</td>
-              <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
-              <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
-              <td>${tipoBadge}</td>
-              <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
-              <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
-              <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
-              <td class="text-sm">${r.nombre}</td>
-              <td class="text-sm">${r.unidad}</td>
-              <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
-              <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
-              <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
-              <td style="text-align:center">${fotoHtml}</td>
-            </tr>`;
-  });
-
-  html += `
-          </tbody>
-        </table>
+      <div class="table-wrap" id="hp-table-container">
+        <!-- Cargando... -->
+      </div>
+      <div class="card-footer" id="hp-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc">
       </div>
     </div>
   `;
 
-  content.innerHTML = html;
+  cargarHistorialProceso();
+}
+
+function cargarHistorialProceso() {
+  const container = document.getElementById('hp-table-container');
+  if (container) {
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:#888;">
+      <div style="border:3px solid #f3f3f3;border-top:3px solid var(--green);border-radius:50%;width:30px;height:30px;animation:spin 1s linear infinite;margin:0 auto 10px"></div>
+      Cargando inventario...
+    </div>`;
+  }
+
+  fetchTraspasosPaginated({
+    page: hpPage,
+    limit: hpLimit,
+    cc: '999'
+  })
+  .then(data => {
+    const list = data.traspasos || [];
+    hpTotal = data.total || 0;
+
+    let rows = [];
+    list.forEach(t => {
+      const ccOriObj = S.centrosCosto.find(c => c.id === t.ccOrigen);
+      const ccDesObj = S.centrosCosto.find(c => c.id === t.ccDestino);
+      const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
+      const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
+
+      t.items.forEach((item, idx) => {
+        const ins = getInsumo(item.insumoId);
+        rows.push({
+          fecha: t.fechaSolicitud || '',
+          folio: t.folio,
+          id: t.id,
+          tipo: t.tipo,
+          status: t.status,
+          ccOrigen: t.ccOrigen,
+          ccOrigenNombre: ccOriNombre,
+          ccDestino: t.ccDestino,
+          ccDestinoNombre: ccDesNombre,
+          clave: ins ? ins.clave : item.insumoId,
+          nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
+          unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
+          cantidad: item.cantidad || 0,
+          precio: item.precio || 0,
+          comentario: item.comentario || '',
+          imagen: item.imagen || ''
+        });
+      });
+    });
+
+    rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+    document.getElementById('hp-total-count').textContent = `${hpTotal} movimientos`;
+    
+    if (rows.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding:40px 20px">
+          <div style="font-size:40px;margin-bottom:12px">📦</div>
+          <p>No hay movimientos registrados para el CC 999</p>
+        </div>`;
+      document.getElementById('hp-pagination').innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <table id="hp-tabla">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Fecha</th>
+            <th>Folio</th>
+            <th>Tipo</th>
+            <th>CC Origen</th>
+            <th>CC Destino</th>
+            <th>Clave</th>
+            <th>Insumo</th>
+            <th>Unidad</th>
+            <th>Cant.</th>
+            <th>Precio</th>
+            <th>Descripción</th>
+            <th>Foto</th>
+          </tr>
+        </thead>
+        <tbody id="hp-tbody">
+          ${rows.map((r, idx) => {
+            const indexOnPage = (hpPage - 1) * hpLimit + idx + 1;
+            const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+            const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
+                            : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
+                            : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
+                            : `<span class="badge badge-draft">${r.tipo}</span>`;
+            const fotoHtml = r.imagen
+              ? `<img src="${r.imagen}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0" onclick="window.open('${r.imagen}')" title="Ver foto">`
+              : '<span style="color:#ccc;font-size:11px">—</span>';
+
+            return `
+              <tr class="hp-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
+                <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
+                <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
+                <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
+                <td>${tBadge}</td>
+                <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
+                <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
+                <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
+                <td class="text-sm">${r.nombre}</td>
+                <td class="text-sm">${r.unidad}</td>
+                <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
+                <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
+                <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
+                <td style="text-align:center">${fotoHtml}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+
+    renderHpPaginationControls();
+  })
+  .catch(err => {
+    console.error(err);
+    container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del inventario.</div>';
+  });
+}
+
+function cambiarHpPagina(nuevaPagina) {
+  const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
+  if (nuevaPagina < 1 || nuevaPagina > totalPaginas) return;
+  hpPage = nuevaPagina;
+  cargarHistorialProceso();
+}
+
+function renderHpPaginationControls() {
+  const paginationContainer = document.getElementById('hp-pagination');
+  if (!paginationContainer) return;
+
+  const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
+  const rangeInfo = hpTotal > 0
+    ? `Mostrando ${(hpPage - 1) * hpLimit + 1} - ${Math.min(hpPage * hpLimit, hpTotal)} de ${hpTotal} traspasos`
+    : `Mostrando 0 - 0 de 0`;
+
+  paginationContainer.innerHTML = `
+    <span style="font-size:12px;color:#64748b;font-weight:600">${rangeInfo}</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn btn-secondary btn-sm" onclick="cambiarHpPagina(${hpPage - 1})" ${hpPage === 1 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+        Anterior
+      </button>
+      <span style="font-size:12px;font-weight:700;color:#334155;padding:0 8px">Página ${hpPage} de ${totalPaginas}</span>
+      <button class="btn btn-secondary btn-sm" onclick="cambiarHpPagina(${hpPage + 1})" ${hpPage === totalPaginas ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+        Siguiente
+      </button>
+    </div>
+  `;
 }
 
 function filtrarHistorialProceso() {
@@ -168,23 +223,19 @@ async function exportarExcel() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Inventario CC 999');
 
-    // Activar líneas de cuadrícula
     worksheet.views = [{ showGridLines: true }];
 
-    // 1. Título del Reporte
     worksheet.mergeCells('A1:M1');
     const titleCell = worksheet.getCell('A1');
     titleCell.value = 'Reporte de Inventario - Centro de Costo 999 (Saldos Iniciales)';
     titleCell.font = { name: 'Montserrat', family: 4, size: 16, bold: true, color: { argb: 'FFFFFF' } };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '16A34A' } }; // Verde Grupo Urbania
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '16A34A' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
     worksheet.getRow(1).height = 40;
 
-    // Fila vacía de separación
     worksheet.addRow([]);
     worksheet.getRow(2).height = 15;
 
-    // 2. Definir Columnas y Encabezados
     const headers = [
       '#', 'Fecha', 'Folio', 'Tipo', 'CC Origen', 'CC Destino', 'Clave Insumo', 
       'Descripción Insumo', 'Unidad', 'Cant.', 'Precio Unit.', 'Detalle / Comentario', 'Foto'
@@ -192,11 +243,10 @@ async function exportarExcel() {
     worksheet.getRow(3).values = headers;
     worksheet.getRow(3).height = 28;
     
-    // Formato de cabecera
     for (let c = 1; c <= headers.length; c++) {
       const cell = worksheet.getCell(3, c);
       cell.font = { name: 'Montserrat', family: 4, size: 10, bold: true, color: { argb: '333333' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } }; // Gris claro
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
       cell.alignment = { vertical: 'middle', horizontal: c === 1 || c === 2 || c === 4 || c === 9 || c === 13 ? 'center' : 'left' };
       cell.border = {
         top: { style: 'thin', color: { argb: 'CBD5E1' } },
@@ -206,7 +256,6 @@ async function exportarExcel() {
       };
     }
 
-    // 3. Procesar Filas de Datos
     const rows = table.querySelectorAll('tbody tr');
     let excelRowIndex = 4;
 
@@ -228,7 +277,6 @@ async function exportarExcel() {
       const precioValue = parseFloat(tds[10].textContent.replace(/[$,]/g, '').trim()) || 0;
       const comentarioValue = tds[11].textContent.trim();
       
-      // Obtener imagen
       const imgEl = tds[12].querySelector('img');
       const imgUrl = imgEl ? imgEl.getAttribute('src') : null;
 
@@ -245,13 +293,11 @@ async function exportarExcel() {
         cantValue,
         precioValue,
         comentarioValue === '—' ? '' : comentarioValue,
-        '' // Celda vacía para colocar la imagen encima
+        ''
       ]);
 
-      // Altura de fila: si hay imagen, la hacemos más alta (ej. 65), si no, normal (22)
       newRow.height = imgUrl ? 65 : 22;
 
-      // Estilo de celdas
       for (let c = 1; c <= headers.length; c++) {
         const cell = worksheet.getCell(excelRowIndex, c);
         cell.font = { name: 'Montserrat', family: 4, size: 9 };
@@ -266,28 +312,23 @@ async function exportarExcel() {
           right: { style: 'thin', color: { argb: 'F1F5F9' } }
         };
 
-        // Formato para columna de precio
         if (c === 11) {
           cell.numFmt = '"$"#,##0.00';
         }
       }
 
-      // 4. Descargar e incrustar la imagen si existe
       if (imgUrl) {
         try {
-          // Descargar imagen
           const response = await fetch(imgUrl);
           if (response.ok) {
             const blob = await response.blob();
             
-            // Convertir blob a base64
             const base64Data = await new Promise((resolve) => {
               const reader = new FileReader();
               reader.onloadend = () => resolve(reader.result);
               reader.readAsDataURL(blob);
             });
 
-            // Extraer tipo de imagen
             const matches = base64Data.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
             if (matches) {
               const ext = matches[1];
@@ -298,9 +339,8 @@ async function exportarExcel() {
                 extension: ext === 'jpg' ? 'jpeg' : ext
               });
 
-              // Agregar imagen a la hoja de cálculo centrándola en la celda
               worksheet.addImage(imageId, {
-                tl: { col: 12, row: excelRowIndex - 1 }, // 0-indexed en ExcelJS
+                tl: { col: 12, row: excelRowIndex - 1 },
                 ext: { width: 60, height: 60 },
                 editAs: 'oneCell'
               });
@@ -314,7 +354,6 @@ async function exportarExcel() {
       excelRowIndex++;
     }
 
-    // 5. Configurar anchos de columna automáticamente
     worksheet.columns.forEach((column, i) => {
       let maxLen = 0;
       column.eachCell({ includeEmpty: true }, (cell) => {
@@ -322,12 +361,10 @@ async function exportarExcel() {
           maxLen = Math.max(maxLen, cell.value.toString().length);
         }
       });
-      // Dar un margen extra a los anchos
       const colWidths = [6, 14, 22, 14, 12, 12, 14, 32, 10, 10, 14, 30, 12];
       column.width = Math.max(colWidths[i] || 10, maxLen + 3);
     });
 
-    // 6. Generar el buffer del archivo y disparar descarga
     const buffer = await workbook.xlsx.writeBuffer();
     const fileBlob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(fileBlob);

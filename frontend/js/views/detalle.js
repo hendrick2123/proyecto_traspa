@@ -85,7 +85,19 @@ function verDetalle(id) {
      <div style="margin-bottom:4px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Insumos</div>
      ${resumenItems(t)}`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-     ${(t.tipo === 'PRS' || (t.tipo === 'GAR' && t.items.some(i => parseFloat(i.cantidad) >= 3))) && t.status === 'recibido' ? `<button class="btn btn-primary" style="background:var(--blue);border-color:var(--blue)" onclick="closeModal();iniciarDevolucion('${t.id}')">↩ Devolver</button>` : ''}
+     ${(function() {
+       if ((t.tipo === 'PRS' || (t.tipo === 'GAR' && t.items.some(i => parseFloat(i.cantidad) >= 3))) && (t.status === 'recibido' || t.status === 'devuelto_parcial')) {
+         if (typeof tieneDevolucionEnProceso === 'function' && tieneDevolucionEnProceso(t)) {
+           const info = typeof getDevolucionEnProcesoInfo === 'function' ? getDevolucionEnProcesoInfo(t) : null;
+           const label = info ? info.itemsEnProceso + ' de ' + info.totalItems + ' insumos' : '';
+           return '<button class="btn btn-primary" style="background:#94a3b8;border-color:#94a3b8;cursor:not-allowed;opacity:0.7" disabled title="Devolución en proceso">⏳ En proceso (' + label + ')</button>';
+         }
+         if (typeof tienePendientesDevolucion === 'function' && tienePendientesDevolucion(t)) {
+           return '<button class="btn btn-primary" style="background:var(--blue);border-color:var(--blue)" onclick="closeModal();iniciarDevolucion(\'' + t.id + '\')">↩ Devolver</button>';
+         }
+       }
+       return '';
+     })()}
      <button class="btn btn-primary"   onclick="closeModal();imprimirTraspaso('${id}')">🖨 Imprimir</button>`
   );
 }

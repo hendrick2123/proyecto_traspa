@@ -468,7 +468,7 @@ function guardarSolicitud() {
   };
 
   S.traspasos.push(t);
-  saveState();
+  saveState('traspasos');
 
   document.getElementById('content').innerHTML = `
   <div class="card" style="max-width:600px;margin:40px auto">

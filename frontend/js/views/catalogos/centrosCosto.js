@@ -67,7 +67,7 @@ function doNuevoCC() {
   if (!empId || !nombre) return alert('Complete los campos obligatorios');
   const id = 'CC' + String(S.centrosCosto.length + 1).padStart(3, '0');
   S.centrosCosto.push({ id, empresaId: empId, nombre, direccion: dir });
-  saveState();
+  saveState('centrosCosto');
   closeModal();
   renderCentrosCosto();
 }
@@ -95,7 +95,7 @@ function doEditCC(id) {
   c.empresaId= document.getElementById('ec-emp').value;
   c.nombre   = document.getElementById('ec-nombre').value.trim();
   c.direccion= document.getElementById('ec-dir').value.trim();
-  saveState();
+  saveState('centrosCosto');
   closeModal();
   renderCentrosCosto();
 }

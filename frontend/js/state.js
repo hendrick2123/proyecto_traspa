@@ -20,39 +20,134 @@ function loadState() {
 let S = loadState();
 
 function fetchState() {
-  return fetch(API_BASE + '/api/state')
+  const token = sessionStorage.getItem('gu_token');
+  const headers = { 'Authorization': 'Bearer ' + token };
+
+  return Promise.all([
+    fetch(API_BASE + '/api/empresas', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/centros_costo', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/insumos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/desarrollos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/traspasos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/folios', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); })
+  ])
+  .then(([empData, ccData, insData, devData, trData, folioData]) => {
+    S = {
+      empresas: empData.empresas,
+      centrosCosto: ccData.centrosCosto,
+      insumos: insData.insumos,
+      desarrollos: devData.desarrollos,
+      traspasos: trData.traspasos,
+      folios: folioData.folios
+    };
+    try {
+      localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
+    } catch (e) {}
+    return S;
+  })
+  .catch(err => {
+    console.error('Error al cargar datos desde endpoints específicos, intentando fallback /api/state...', err);
+    return fetch(API_BASE + '/api/state', { headers })
+      .then(res => {
+        if (!res.ok) throw new Error('Error al conectar con el servidor.');
+        return res.json();
+      })
+      .then(data => {
+        S = data;
+        try {
+          localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
+        } catch (e) {}
+        return S;
+      });
+  });
+}
+
+function fetchTraspasosPaginated({ page = 1, limit = 25, status = '', tipo = '', empresa = '', cc = '', insumo = '' } = {}) {
+  const token = sessionStorage.getItem('gu_token');
+  const headers = { 'Authorization': 'Bearer ' + token };
+  
+  const params = new URLSearchParams({
+    page,
+    limit,
+    status,
+    tipo,
+    empresa,
+    cc,
+    insumo
+  });
+  
+  for (const [key, value] of [...params.entries()]) {
+    if (!value) params.delete(key);
+  }
+
+  return fetch(API_BASE + '/api/traspasos?' + params.toString(), { headers })
     .then(res => {
       if (!res.ok) throw new Error('Error al conectar con el servidor.');
       return res.json();
-    })
-    .then(data => {
-      S = data;
-      try {
-        localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
-      } catch (e) {}
-      return S;
     });
 }
 
-function saveState() {
+function saveState(resource) {
   try {
     localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
   } catch (e) {}
 
-  return fetch(API_BASE + '/api/state', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(S)
-  })
-  .then(res => {
-    if (!res.ok) throw new Error('Error al guardar el estado en el servidor.');
-    return res.json();
-  })
-  .catch(err => {
-    console.error('Error al guardar el estado en el servidor:', err);
-  });
+  const token = sessionStorage.getItem('gu_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + token
+  };
+
+  if (resource === 'empresas') {
+    return fetch(API_BASE + '/api/empresas', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ empresas: S.empresas })
+    }).then(res => {
+      if (!res.ok) throw new Error('Error al guardar empresas.');
+      return res.json();
+    });
+  } else if (resource === 'centrosCosto') {
+    return fetch(API_BASE + '/api/centros_costo', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ centrosCosto: S.centrosCosto })
+    }).then(res => {
+      if (!res.ok) throw new Error('Error al guardar centros de costo.');
+      return res.json();
+    });
+  } else if (resource === 'insumos') {
+    return fetch(API_BASE + '/api/insumos', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ insumos: S.insumos })
+    }).then(res => {
+      if (!res.ok) throw new Error('Error al guardar insumos.');
+      return res.json();
+    });
+  } else if (resource === 'traspasos') {
+    return fetch(API_BASE + '/api/traspasos', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ traspasos: S.traspasos })
+    }).then(res => {
+      if (!res.ok) throw new Error('Error al guardar traspasos.');
+      return res.json();
+    });
+  } else {
+    return fetch(API_BASE + '/api/state', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(S)
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Error al guardar el estado en el servidor.');
+      return res.json();
+    })
+    .catch(err => {
+      console.error('Error al guardar el estado en el servidor:', err);
+    });
+  }
 }
 
 // ── Folio generator ──────────────────────────────────

@@ -64,7 +64,7 @@ function doNuevoInsumo() {
   if (S.insumos.find(i => i.clave === clave)) return alert('Ya existe un insumo con esa clave');
   const id = 'INS' + String(S.insumos.length + 1).padStart(3, '0');
   S.insumos.push({ id, clave, nombre, unidad, categoria });
-  saveState();
+  saveState('insumos');
   closeModal();
   renderInsumos();
 }
@@ -94,7 +94,7 @@ function doEditInsumo(id) {
   i.nombre   = document.getElementById('ei-nombre').value.trim();
   i.unidad   = document.getElementById('ei-unidad').value.trim();
   i.categoria= document.getElementById('ei-cat').value;
-  saveState();
+  saveState('insumos');
   closeModal();
   renderInsumos();
 }

@@ -50,7 +50,7 @@ function doNuevaEmpresa() {
   if (!id || !nombre) return alert('Complete los campos obligatorios');
   if (S.empresas.find(e => e.id === id)) return alert('Ya existe una empresa con esa clave');
   S.empresas.push({ id, nombre });
-  saveState();
+  saveState('empresas');
   closeModal();
   renderEmpresas();
 }
@@ -70,7 +70,7 @@ function modalEditEmpresa(id) {
 function doEditEmpresa(id) {
   const e  = S.empresas.find(x => x.id === id);
   e.nombre = document.getElementById('ee-nombre').value.trim();
-  saveState();
+  saveState('empresas');
   closeModal();
   renderEmpresas();
 }

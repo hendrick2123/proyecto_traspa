@@ -78,7 +78,7 @@ function doRecibir(id) {
   t.receptor      = nombre;
   t.fechaRecepcion= now();
   t.comentarioRec = document.getElementById('rxr-comment').value.trim();
-  saveState();
+  saveState('traspasos');
   closeModal();
 
   openModal(

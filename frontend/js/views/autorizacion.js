@@ -135,7 +135,7 @@ function doAutorizar(id, esFirmaDos) {
     t.comentarioAuth    = document.getElementById('auth-comment').value.trim();
   }
 
-  saveState();
+  saveState('traspasos');
   closeModal();
 
   const successTitle = esFirmaDos ? 'Traspaso Autorizado Completamente' : 'Traspaso Pre-Autorizado';
@@ -223,7 +223,7 @@ function doRechazar(id) {
     t.comentarioAuth    = motivo;
   }
 
-  saveState();
+  saveState('traspasos');
   closeModal();
   renderAutorizacion();
   updateBadges();

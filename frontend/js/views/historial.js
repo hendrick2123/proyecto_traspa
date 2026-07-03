@@ -2,8 +2,23 @@
 // VIEW – Historial
 // =====================================================
 
+let historialPage = 1;
+const historialLimit = 25;
+let historialTotal = 0;
+
+let filterEmpresa = '';
+let filterCc = '';
+let filterInsumo = '';
+let filterStatus = '';
+let filterTipo = '';
+
 function renderHistorial() {
-  const all = filtrarPorEmpresa([...S.traspasos]).sort((a, b) => b.fechaSolicitud.localeCompare(a.fechaSolicitud));
+  historialPage = 1;
+  filterEmpresa = '';
+  filterCc = '';
+  filterInsumo = '';
+  filterStatus = '';
+  filterTipo = '';
 
   const empresasOpts = S.empresas.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
   const ccOpts = S.centrosCosto.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
@@ -12,7 +27,7 @@ function renderHistorial() {
   document.getElementById('content').innerHTML = `
   <div class="card">
     <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
-      <h3 id="hist-count">Historial de Movimientos (${all.length})</h3>
+      <h3 id="hist-count">Historial de Movimientos (Cargando...)</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="fil-empresa" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todas las empresas</option>
@@ -45,34 +60,97 @@ function renderHistorial() {
       </div>
     </div>
     <div class="table-wrap" id="hist-table">
-      ${renderHistorialTable(all)}
+      <div style="text-align:center;padding:40px;color:#888;">Cargando datos...</div>
+    </div>
+    <div class="card-footer" id="hist-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc">
     </div>
   </div>`;
+
+  cargarHistorial();
+}
+
+function cargarHistorial() {
+  const tableContainer = document.getElementById('hist-table');
+  if (tableContainer) {
+    tableContainer.innerHTML = `<div style="text-align:center;padding:40px;color:#888;">
+      <div style="border:3px solid #f3f3f3;border-top:3px solid var(--green);border-radius:50%;width:30px;height:30px;animation:spin 1s linear infinite;margin:0 auto 10px"></div>
+      Cargando...
+    </div>`;
+  }
+
+  fetchTraspasosPaginated({
+    page: historialPage,
+    limit: historialLimit,
+    status: filterStatus,
+    tipo: filterTipo,
+    empresa: filterEmpresa,
+    cc: filterCc,
+    insumo: filterInsumo
+  })
+  .then(data => {
+    const list = data.traspasos || [];
+    historialTotal = data.total || 0;
+
+    // Sincronizar traspasos paginados en S.traspasos para que las funciones
+    // de devolución (tieneDevolucionEnProceso, calcularPendientes) funcionen
+    list.forEach(t => {
+      const idx = S.traspasos.findIndex(x => x.id === t.id);
+      if (idx >= 0) {
+        S.traspasos[idx] = t; // actualizar con datos frescos del servidor
+      } else {
+        S.traspasos.push(t);  // agregar si no existe
+      }
+    });
+
+    document.getElementById('hist-count').textContent = `Historial de Movimientos (${historialTotal})`;
+    document.getElementById('hist-table').innerHTML = renderHistorialTable(list);
+    renderPaginationControls();
+  })
+  .catch(err => {
+    console.error(err);
+    document.getElementById('hist-table').innerHTML = '<div class="alert alert-danger">Error al cargar datos del servidor</div>';
+  });
 }
 
 function filtrarHistorial() {
-  const st = document.getElementById('fil-status').value;
-  const tp = document.getElementById('fil-tipo').value;
-  const emp = document.getElementById('fil-empresa').value;
-  const cc = document.getElementById('fil-cc').value;
-  const ins = document.getElementById('fil-insumo').value;
-
-  let list = filtrarPorEmpresa([...S.traspasos]).sort((a, b) => b.fechaSolicitud.localeCompare(a.fechaSolicitud));
+  filterStatus = document.getElementById('fil-status').value;
+  filterTipo = document.getElementById('fil-tipo').value;
+  filterEmpresa = document.getElementById('fil-empresa').value;
+  filterCc = document.getElementById('fil-cc').value;
+  filterInsumo = document.getElementById('fil-insumo').value;
   
-  if (st) list = list.filter(t => t.status === st);
-  if (tp) list = list.filter(t => t.tipo === tp);
-  if (emp) {
-    list = list.filter(t => {
-      const ccOri = S.centrosCosto.find(c => c.id === t.ccOrigen);
-      const ccDes = S.centrosCosto.find(c => c.id === t.ccDestino);
-      return (ccOri && String(ccOri.empresaId) === emp) || (ccDes && String(ccDes.empresaId) === emp);
-    });
-  }
-  if (cc) list = list.filter(t => t.ccOrigen === cc || t.ccDestino === cc);
-  if (ins) list = list.filter(t => t.items && t.items.some(i => String(i.insumoId) === ins));
+  historialPage = 1;
+  cargarHistorial();
+}
 
-  document.getElementById('hist-count').textContent = `Historial de Movimientos (${list.length})`;
-  document.getElementById('hist-table').innerHTML = renderHistorialTable(list);
+function cambiarPagina(nuevaPagina) {
+  const totalPaginas = Math.ceil(historialTotal / historialLimit);
+  if (nuevaPagina < 1 || nuevaPagina > totalPaginas) return;
+  historialPage = nuevaPagina;
+  cargarHistorial();
+}
+
+function renderPaginationControls() {
+  const paginationContainer = document.getElementById('hist-pagination');
+  if (!paginationContainer) return;
+
+  const totalPaginas = Math.ceil(historialTotal / historialLimit) || 1;
+  const rangeInfo = historialTotal > 0
+    ? `Mostrando ${(historialPage - 1) * historialLimit + 1} - ${Math.min(historialPage * historialLimit, historialTotal)} de ${historialTotal}`
+    : `Mostrando 0 - 0 de 0`;
+
+  paginationContainer.innerHTML = `
+    <span style="font-size:12px;color:#64748b;font-weight:600">${rangeInfo}</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn btn-secondary btn-sm" onclick="cambiarPagina(${historialPage - 1})" ${historialPage === 1 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+        Anterior
+      </button>
+      <span style="font-size:12px;font-weight:700;color:#334155;padding:0 8px">Página ${historialPage} de ${totalPaginas}</span>
+      <button class="btn btn-secondary btn-sm" onclick="cambiarPagina(${historialPage + 1})" ${historialPage === totalPaginas ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+        Siguiente
+      </button>
+    </div>
+  `;
 }
 
 function renderHistorialTable(list) {
@@ -104,12 +182,19 @@ function renderHistorialTable(list) {
         <td class="text-sm">${t.autorizador ? (t.autorizador2 ? `${t.autorizador} / ${t.autorizador2}` : t.autorizador) : '—'}</td>
         <td>${statusBadge(t.status)}</td>
         <td>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;align-items:center">
             <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
             <button class="btn btn-secondary btn-sm" onclick="imprimirTraspaso('${t.id}')">🖨</button>
             ${tienePendientesDevolucion(t)
-              ? `<button class="btn btn-primary btn-sm" style="background:var(--blue);border-color:var(--blue)" onclick="iniciarDevolucion('${t.id}')" title="Devolver insumos pendientes">↩</button>`
-              : ''}
+              ? (tieneDevolucionEnProceso(t)
+                ? (() => {
+                    const info = getDevolucionEnProcesoInfo(t);
+                    const label = info ? info.itemsEnProceso + ' de ' + info.totalItems : '';
+                    return '<button class="btn btn-sm" style="background:#94a3b8;border-color:#94a3b8;color:#fff;cursor:not-allowed;opacity:0.7;font-size:10px" disabled title="Devolución en proceso – ' + label + ' insumos">⏳ ' + label + '</button>';
+                  })()
+                : '<button class="btn btn-primary btn-sm" style="background:var(--blue);border-color:var(--blue)" onclick="iniciarDevolucion(\'' + t.id + '\')" title="Devolver insumos pendientes">↩</button>')
+              : ''
+            }
           </div>
         </td>
       </tr>`).join('')}

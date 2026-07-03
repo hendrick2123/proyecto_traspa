@@ -45,6 +45,48 @@ function calcularPendientes(originalId) {
 }
 
 /**
+ * Verifica si un traspaso tiene un DEV en proceso (pendiente, pre_autorizado o autorizado).
+ * Mientras haya uno en proceso, no se debe poder iniciar otra devolución.
+ */
+function tieneDevolucionEnProceso(t) {
+  if (!t || !t.folio) return false;
+  const statusEnProceso = ['pendiente', 'pre_autorizado', 'autorizado'];
+  return S.traspasos.some(d =>
+    d.tipo === 'DEV' &&
+    d.folioOriginalRef === t.folio &&
+    statusEnProceso.includes(d.status)
+  );
+}
+
+/**
+ * Devuelve info sobre la devolución en proceso para mostrar en el historial.
+ * Retorna { enProceso, itemsEnProceso, totalItems } o null si no hay.
+ */
+function getDevolucionEnProcesoInfo(t) {
+  if (!t || !t.folio) return null;
+  const statusEnProceso = ['pendiente', 'pre_autorizado', 'autorizado'];
+  const devsEnProceso = S.traspasos.filter(d =>
+    d.tipo === 'DEV' &&
+    d.folioOriginalRef === t.folio &&
+    statusEnProceso.includes(d.status)
+  );
+  if (devsEnProceso.length === 0) return null;
+
+  // Contar cuántos insumos distintos se están devolviendo en proceso
+  let itemsEnProceso = 0;
+  devsEnProceso.forEach(dev => {
+    itemsEnProceso += dev.items.length;
+  });
+
+  return {
+    enProceso: true,
+    itemsEnProceso: itemsEnProceso,
+    totalItems: t.items.length,
+    statusDev: devsEnProceso[0].status
+  };
+}
+
+/**
  * Verifica si un traspaso todavía tiene insumos pendientes de devolver.
  * Considera DEV en cualquier estado excepto rechazado.
  */
@@ -62,6 +104,12 @@ function iniciarDevolucion(id) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t || (t.tipo !== 'PRS' && t.tipo !== 'GAR')) return;
   if (t.status !== 'recibido' && t.status !== 'devuelto_parcial') return;
+
+  // Bloquear si ya hay una devolución en proceso
+  if (tieneDevolucionEnProceso(t)) {
+    alert('Ya existe una devolución en proceso para este traspaso. Espera a que se complete antes de iniciar otra.');
+    return;
+  }
 
   devOriginalId = t.id;
   devOriginalFolio = t.folio;
@@ -289,7 +337,7 @@ function guardarDevolucion() {
     }
   }
 
-  saveState();
+  saveState('traspasos');
 
   document.getElementById('content').innerHTML = `
   <div class="card" style="max-width:600px;margin:40px auto">
