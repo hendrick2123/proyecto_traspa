@@ -33,12 +33,12 @@ function fetchState() {
   ])
   .then(([empData, ccData, insData, devData, trData, folioData]) => {
     S = {
-      empresas: empData.empresas,
-      centrosCosto: ccData.centrosCosto,
-      insumos: insData.insumos,
-      desarrollos: devData.desarrollos,
-      traspasos: trData.traspasos,
-      folios: folioData.folios
+      empresas: empData.empresas || (Array.isArray(empData) ? empData : []),
+      centrosCosto: ccData.centrosCosto || (Array.isArray(ccData) ? ccData : []),
+      insumos: insData.insumos || (Array.isArray(insData) ? insData : []),
+      desarrollos: devData.desarrollos || (Array.isArray(devData) ? devData : []),
+      traspasos: trData.traspasos || (Array.isArray(trData) ? trData : []),
+      folios: folioData.folios || folioData || { PRS: 0, TOB: 0, DEV: 0, GAR: 0 }
     };
     try {
       localStorage.setItem('gurbania_traspasos', JSON.stringify(S));

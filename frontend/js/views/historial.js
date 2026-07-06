@@ -28,12 +28,13 @@ function renderHistorial() {
     if (!groups[cc.empresaId]) groups[cc.empresaId] = { label: devNombre, items: [] };
     groups[cc.empresaId].items.push(cc);
   });
-  const ccOpts = Object.values(groups).map(g =>
-    `<optgroup label="${g.label}">${g.items.map(c => {
+  const ccOpts = Object.values(groups).map(g => {
+    const inner = g.items.map(c => {
       const num = String(c.id).substring(0, 3);
-      return \`<option value="\${c.id}">\${num} - \${c.nombre}</option>\`;
-    }).join('')}</optgroup>`
-  ).join('');
+      return '<option value="' + c.id + '">' + num + ' - ' + c.nombre + '</option>';
+    }).join('');
+    return '<optgroup label="' + g.label + '">' + inner + '</optgroup>';
+  }).join('');
   const insumosOpts = S.insumos.map(i => `<option value="${i.id}">${i.clave || ''} - ${i.nombre}</option>`).join('');
 
   document.getElementById('content').innerHTML = `

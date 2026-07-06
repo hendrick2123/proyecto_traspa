@@ -3,7 +3,7 @@
 // =====================================================
 
 function renderDashboard() {
-  const traspaFiltrados = filtrarPorEmpresa(S.traspasos);
+  const traspaFiltrados = filtrarPorEmpresa(S.traspasos || []);
   const total      = traspaFiltrados.length;
   
   const user = getUser();
