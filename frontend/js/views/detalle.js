@@ -51,6 +51,7 @@ function verDetalle(id) {
        <div class="form-group"><label>Folio</label><div style="font-size:16px;font-weight:800;color:var(--green)">${t.folio}</div></div>
        <div class="form-group"><label>Estado</label><div>${statusBadge(t.status)}</div></div>
        <div class="form-group"><label>Tipo</label><div>${tipoBadge(t.tipo)}</div></div>
+       ${t.folioOriginalRef ? `<div class="form-group"><label>Referencia Préstamo/Garantía</label><div style="font-weight:700;color:#e67e22">${t.folioOriginalRef}</div></div>` : ''}
        <div class="form-group"><label>Solicitante</label><div>${t.solicitante}</div></div>
        <div class="form-group"><label>Empresa Origen</label><div>${getEmpresa(t.empresaOrigen).nombre}</div></div>
        <div class="form-group"><label>CC Origen</label><div>${getCC(t.ccOrigen).nombre}</div></div>

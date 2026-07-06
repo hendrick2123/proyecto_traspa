@@ -15,7 +15,10 @@ function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
               ${pendientes.map(t => `
               <tr>
                 <td><strong>${t.folio}</strong></td>
-                <td>${tipoBadge(t.tipo)}</td>
+                <td>
+                   ${tipoBadge(t.tipo)}
+                   ${t.folioOriginalRef ? `<div style="font-size:10px;color:#718096;margin-top:4px;font-weight:600">Ref: ${t.folioOriginalRef}</div>` : ''}
+                 </td>
                 <td class="text-sm">
                   <div style="font-weight:600">${getCC(t.ccOrigen).nombre}</div>
                   <div style="color:#888;font-size:11px">${getDesarrollo(getCC(t.ccOrigen).empresaId).nombre}</div>

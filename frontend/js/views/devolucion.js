@@ -270,12 +270,37 @@ function renderDevItems() {
 }
 
 function guardarDevolucion() {
+  const btn = document.querySelector('button[onclick="guardarDevolucion()"]');
+  if (btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.innerHTML = 'Generando...';
+  }
+
   const sol = document.getElementById('dev-solicitante').value.trim();
   const obs = document.getElementById('dev-obs').value.trim();
 
-  if (!sol) return alert('Seleccione un solicitante');
-  if (devItems.length === 0) return alert('No hay insumos pendientes de devolver');
-  if (devItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
+  const resetBtn = () => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Generar Devolución`;
+    }
+  };
+
+  if (!sol) {
+    resetBtn();
+    return alert('Seleccione un solicitante');
+  }
+  if (devItems.length === 0) {
+    resetBtn();
+    return alert('No hay insumos pendientes de devolver');
+  }
+  if (devItems.some(i => !i.cantidad || i.cantidad <= 0)) {
+    resetBtn();
+    return alert('Todas las cantidades deben ser mayores a cero');
+  }
 
   // Validar que no se devuelva más de lo pendiente
   for (let i = 0; i < devItems.length; i++) {
@@ -283,6 +308,7 @@ function guardarDevolucion() {
     const maxPendiente = item.cantidadOriginal - item.cantidadDevuelta;
     if (parseFloat(item.cantidad) > maxPendiente + 0.0001) {
       const ins = getInsumo(item.insumoId);
+      resetBtn();
       return alert(`No puedes devolver más de ${maxPendiente} unidades de "${ins.nombre}". Solo eso está pendiente.`);
     }
   }
