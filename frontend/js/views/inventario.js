@@ -147,15 +147,15 @@ function cargarInventario() {
                   <th>Fecha</th>
                   <th>Folio</th>
                   <th>Tipo</th>
-                  <th>CC Origen</th>
-                  <th>CC Destino</th>
+                  <th>Origen</th>
+                  <th>Destino</th>
                   <th>Clave</th>
                   <th>Insumo</th>
                   <th>Unidad</th>
                   <th>Cant. Préstamo Total</th>
                   <th>Cant. Devuelta</th>
                   <th>Pendiente por Devolver</th>
-                  <th>Descripción</th>
+                  <th>Estado</th>
                 </tr>
               </thead>
               <tbody id="inv-tbody">
@@ -170,20 +170,20 @@ function cargarInventario() {
                   const pendHtml = `<span style="color:${pendColor};font-weight:700">${(r.pendiente || 0).toFixed(2)}</span>`;
 
                   return `
-                    <tr class="inv-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
+                    <tr class="inv-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.ccOrigenNombre + ' ' + r.ccDestinoNombre + ' ' + r.comentario).toLowerCase()}">
                       <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
                       <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
                       <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
                       <td>${tBadge}</td>
-                      <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
-                      <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
+                      <td class="text-sm" title="${r.ccOrigen}"><strong>${r.ccOrigenNombre}</strong></td>
+                      <td class="text-sm" title="${r.ccDestino}"><strong>${r.ccDestinoNombre}</strong></td>
                       <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
                       <td class="text-sm">${r.nombre}</td>
                       <td class="text-sm">${r.unidad}</td>
                       <td class="text-sm" style="font-weight:700">${(r.prestamoTotal || 0).toFixed(2)}</td>
                       <td class="text-sm" style="font-weight:700;color:#16a34a">${(r.devuelta || 0).toFixed(2)}</td>
                       <td class="text-sm" style="font-weight:700">${pendHtml}</td>
-                      <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
+                      <td class="text-sm">${statusBadge(r.status)}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -290,20 +290,22 @@ async function exportarExcelInventario() {
         const cantOriginal = parseFloat(item.cantidad) || 0;
         const cantDevuelta = yaDevuelto[item.insumoId] || 0;
         const pendiente = cantOriginal - cantDevuelta;
+        const statusLabels = { pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
+        const statusLabel = statusLabels[t.status] || t.status;
 
         rows.push({
           fecha: t.fechaSolicitud ? new Date(t.fechaSolicitud).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—',
           folio: t.folio,
-          tipo: t.tipo,
-          ccOrigen: t.ccOrigen,
-          ccDestino: t.ccDestino,
+          tipo: t.tipo === 'PRS' ? 'Préstamo' : (t.tipo === 'GAR' ? 'Garantía' : t.tipo),
+          ccOrigen: ccOriNombre,
+          ccDestino: ccDesNombre,
           clave: ins ? ins.clave : item.insumoId,
           nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
           unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
           prestamoTotal: cantOriginal,
           devuelta: cantDevuelta,
           pendiente: pendiente,
-          comentario: item.comentario || ''
+          status: statusLabel
         });
       });
     });
@@ -327,8 +329,8 @@ async function exportarExcelInventario() {
     worksheet.getRow(2).height = 15;
 
     const headers = [
-      '#', 'Fecha', 'Folio', 'Tipo', 'CC Origen', 'CC Destino', 'Clave Insumo', 
-      'Descripción Insumo', 'Unidad', 'Cant. Préstamo Total', 'Cant. Devuelta', 'Pend. por Devolver', 'Comentario'
+      '#', 'Fecha', 'Folio', 'Tipo', 'Origen', 'Destino', 'Clave Insumo', 
+      'Descripción Insumo', 'Unidad', 'Cant. Préstamo Total', 'Cant. Devuelta', 'Pend. por Devolver', 'Estado'
     ];
     worksheet.getRow(3).values = headers;
     worksheet.getRow(3).height = 28;
@@ -363,7 +365,7 @@ async function exportarExcelInventario() {
         r.prestamoTotal,
         r.devuelta,
         r.pendiente,
-        r.comentario
+        r.status
       ]);
 
       newRow.height = 22;
@@ -396,7 +398,7 @@ async function exportarExcelInventario() {
           maxLen = Math.max(maxLen, cell.value.toString().length);
         }
       });
-      const colWidths = [6, 14, 22, 14, 12, 12, 14, 32, 10, 16, 16, 16, 30];
+      const colWidths = [6, 14, 22, 14, 24, 24, 14, 32, 10, 16, 16, 16, 16];
       column.width = Math.max(colWidths[i] || 10, maxLen + 3);
     });
 
