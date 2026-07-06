@@ -816,12 +816,14 @@ async def api_get_folios(user: dict = Depends(get_current_user)):
         
     folio_prs = get_max_folio_number("PRS", conn=pg_conn)
     folio_tob = get_max_folio_number("TOB", conn=pg_conn)
+    folio_dev = get_max_folio_number("DEV", conn=pg_conn)
+    folio_gar = get_max_folio_number("GAR", conn=pg_conn)
     
     if pg_conn:
         try: pg_conn.close()
         except Exception: pass
         
-    return {"folios": {"PRS": folio_prs, "TOB": folio_tob}}
+    return {"folios": {"PRS": folio_prs, "TOB": folio_tob, "DEV": folio_dev, "GAR": folio_gar}}
 
 @app.get("/api/state")
 async def api_get_state(user: dict = Depends(get_current_user)):
@@ -839,7 +841,9 @@ async def api_get_state(user: dict = Depends(get_current_user)):
     traspasos  = get_db_traspasos(conn=pg_conn)
     folio_prs  = get_max_folio_number("PRS", conn=pg_conn)
     folio_tob  = get_max_folio_number("TOB", conn=pg_conn)
-    folios     = {"PRS": folio_prs, "TOB": folio_tob}
+    folio_dev  = get_max_folio_number("DEV", conn=pg_conn)
+    folio_gar  = get_max_folio_number("GAR", conn=pg_conn)
+    folios     = {"PRS": folio_prs, "TOB": folio_tob, "DEV": folio_dev, "GAR": folio_gar}
 
     if pg_conn:
         try: pg_conn.close()
