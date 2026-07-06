@@ -1,73 +1,101 @@
 // =====================================================
-// VIEW – Historial de Proceso (Almacén General CC 999)
+// VIEW – Inventario (Préstamos y Garantías)
 // =====================================================
 
-let hpPage = 1;
-const hpLimit = 25;
-let hpTotal = 0;
+let invPage = 1;
+const invLimit = 25;
+let invTotal = 0;
 
-function renderHistorialProceso() {
-  hpPage = 1;
+function renderInventario() {
+  invPage = 1;
   
   document.getElementById('content').innerHTML = `
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Almacén General · CC 999</h2>
-          <p style="font-size:12px;color:#888">Registro detallado de cada insumo movido desde o hacia Saldos Iniciales.</p>
+          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Inventario de Préstamos</h2>
+          <p style="font-size:12px;color:#888">Registro detallado de préstamos y garantías por devolver, excluyendo almacén general (CC 99).</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="hp-buscar" placeholder="Buscar por clave, nombre o comentario..." 
-                 oninput="filtrarHistorialProceso()" 
+          <input type="text" id="inv-buscar" placeholder="Buscar por clave, nombre o comentario..." 
+                 oninput="filtrarInventario()" 
                  style="border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;width:280px;font-family:'Montserrat',sans-serif">
-          <button onclick="exportarExcel()" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;padding:7px 12px;font-size:12px;font-weight:600">
+          <button onclick="exportarExcelInventario()" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;padding:7px 12px;font-size:12px;font-weight:600">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Exportar a Excel
           </button>
-          <span style="font-size:11px;font-weight:700;color:#888;white-space:nowrap" id="hp-total-count">Cargando...</span>
+          <span style="font-size:11px;font-weight:700;color:#888;white-space:nowrap" id="inv-total-count">Cargando...</span>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="table-wrap" id="hp-table-container">
+      <div class="table-wrap" id="inv-table-container">
         <!-- Cargando... -->
       </div>
-      <div class="card-footer" id="hp-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc">
+      <div class="card-footer" id="inv-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc">
       </div>
     </div>
   `;
 
-  cargarHistorialProceso();
+  cargarInventario();
 }
 
-function cargarHistorialProceso() {
-  const container = document.getElementById('hp-table-container');
+function cargarInventario() {
+  const container = document.getElementById('inv-table-container');
   if (container) {
     container.innerHTML = `<div style="text-align:center;padding:40px;color:#888;">
       <div style="border:3px solid #f3f3f3;border-top:3px solid var(--green);border-radius:50%;width:30px;height:30px;animation:spin 1s linear infinite;margin:0 auto 10px"></div>
-      Cargando almacén...
+      Cargando inventario...
     </div>`;
   }
 
+  // Solicitamos un lote grande para poder calcular las devoluciones en base a todo
   fetchTraspasosPaginated({
-    page: hpPage,
-    limit: hpLimit,
-    cc: '999'
+    page: 1,
+    limit: 5000 // Traer un lote grande para poder hacer cruces y calcular total de préstamos
   })
   .then(data => {
+    // Actualizamos el cache
+    if (data.traspasos) {
+       S.traspasos = data.traspasos;
+    }
+
     const list = data.traspasos || [];
-    hpTotal = data.total || 0;
+
+    // Filtrar: solo PRS o GAR, no rechazado y excluir CC 99
+    const prestamos = list.filter(t => 
+      (t.tipo === 'PRS' || t.tipo === 'GAR') && 
+      t.status !== 'rechazado' &&
+      t.ccOrigen !== '99' && t.ccDestino !== '99'
+    );
 
     let rows = [];
-    list.forEach(t => {
+    prestamos.forEach(t => {
       const ccOriObj = S.centrosCosto.find(c => c.id === t.ccOrigen);
       const ccDesObj = S.centrosCosto.find(c => c.id === t.ccDestino);
       const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
       const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
 
-      t.items.forEach((item, idx) => {
+      // Calculamos nosotros los DEV
+      const devs = list.filter(d =>
+        d.tipo === 'DEV' &&
+        d.folioOriginalRef === t.folio &&
+        d.status !== 'rechazado'
+      );
+      const yaDevuelto = {};
+      devs.forEach(dev => {
+        dev.items.forEach(item => {
+          yaDevuelto[item.insumoId] = (yaDevuelto[item.insumoId] || 0) + parseFloat(item.cantidad || 0);
+        });
+      });
+
+      t.items.forEach(item => {
         const ins = getInsumo(item.insumoId);
+        const cantOriginal = parseFloat(item.cantidad) || 0;
+        const cantDevuelta = yaDevuelto[item.insumoId] || 0;
+        const pendiente = cantOriginal - cantDevuelta;
+
         rows.push({
           fecha: t.fechaSolicitud || '',
           folio: t.folio,
@@ -81,30 +109,35 @@ function cargarHistorialProceso() {
           clave: ins ? ins.clave : item.insumoId,
           nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
           unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
-          cantidad: item.cantidad || 0,
-          precio: item.precio || 0,
           comentario: item.comentario || '',
-          imagen: item.imagen || ''
+          prestamoTotal: cantOriginal,
+          devuelta: cantDevuelta,
+          pendiente: pendiente
         });
       });
     });
 
     rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-
-    document.getElementById('hp-total-count').textContent = `${hpTotal} movimientos`;
     
-    if (rows.length === 0) {
+    // Paginación local
+    invTotal = rows.length;
+    const startIndex = (invPage - 1) * invLimit;
+    const pagedRows = rows.slice(startIndex, startIndex + invLimit);
+
+    document.getElementById('inv-total-count').textContent = `${invTotal} movimientos`;
+    
+    if (invTotal === 0) {
       container.innerHTML = `
         <div class="empty-state" style="padding:40px 20px">
           <div style="font-size:40px;margin-bottom:12px">📦</div>
-          <p>No hay movimientos registrados para el CC 999</p>
+          <p>No hay préstamos registrados para las empresas/CC filtrados.</p>
         </div>`;
-      document.getElementById('hp-pagination').innerHTML = '';
+      document.getElementById('inv-pagination').innerHTML = '';
       return;
     }
 
     container.innerHTML = `
-      <table id="hp-tabla">
+      <table id="inv-tabla">
         <thead>
           <tr>
             <th style="width:40px">#</th>
@@ -116,26 +149,26 @@ function cargarHistorialProceso() {
             <th>Clave</th>
             <th>Insumo</th>
             <th>Unidad</th>
-            <th>Cant.</th>
-            <th>Precio</th>
+            <th>Cant. Préstamo Total</th>
+            <th>Cant. Devuelta</th>
+            <th>Pendiente por Devolver</th>
             <th>Descripción</th>
-            <th>Foto</th>
           </tr>
         </thead>
-        <tbody id="hp-tbody">
-          ${rows.map((r, idx) => {
-            const indexOnPage = (hpPage - 1) * hpLimit + idx + 1;
+        <tbody id="inv-tbody">
+          ${pagedRows.map((r, idx) => {
+            const indexOnPage = startIndex + idx + 1;
             const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
             const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
-                            : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
                             : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
                             : `<span class="badge badge-draft">${r.tipo}</span>`;
-            const fotoHtml = r.imagen
-              ? `<img src="${r.imagen}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0" onclick="window.open('${r.imagen}')" title="Ver foto">`
-              : '<span style="color:#ccc;font-size:11px">—</span>';
+
+            // Color del pendiente
+            const pendColor = r.pendiente > 0 ? '#c0392b' : (r.pendiente < 0 ? '#d97706' : '#16a34a');
+            const pendHtml = `<span style="color:${pendColor};font-weight:700">${r.pendiente.toFixed(2)}</span>`;
 
             return `
-              <tr class="hp-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
+              <tr class="inv-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
                 <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
                 <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
                 <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
@@ -145,10 +178,10 @@ function cargarHistorialProceso() {
                 <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
                 <td class="text-sm">${r.nombre}</td>
                 <td class="text-sm">${r.unidad}</td>
-                <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
-                <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
+                <td class="text-sm" style="font-weight:700">${r.prestamoTotal.toFixed(2)}</td>
+                <td class="text-sm" style="font-weight:700;color:#16a34a">${r.devuelta.toFixed(2)}</td>
+                <td class="text-sm" style="font-weight:700">${pendHtml}</td>
                 <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
-                <td style="text-align:center">${fotoHtml}</td>
               </tr>
             `;
           }).join('')}
@@ -156,63 +189,60 @@ function cargarHistorialProceso() {
       </table>
     `;
 
-    renderHpPaginationControls();
+    renderInvPaginationControls();
   })
   .catch(err => {
     console.error(err);
-    container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del almacén.</div>';
+    container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del inventario.</div>';
   });
 }
 
-function cambiarHpPagina(nuevaPagina) {
-  const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
+function cambiarInvPagina(nuevaPagina) {
+  const totalPaginas = Math.ceil(invTotal / invLimit) || 1;
   if (nuevaPagina < 1 || nuevaPagina > totalPaginas) return;
-  hpPage = nuevaPagina;
-  cargarHistorialProceso();
+  invPage = nuevaPagina;
+  cargarInventario();
 }
 
-function renderHpPaginationControls() {
-  const paginationContainer = document.getElementById('hp-pagination');
+function renderInvPaginationControls() {
+  const paginationContainer = document.getElementById('inv-pagination');
   if (!paginationContainer) return;
 
-  const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
-  const rangeInfo = hpTotal > 0
-    ? `Mostrando ${(hpPage - 1) * hpLimit + 1} - ${Math.min(hpPage * hpLimit, hpTotal)} de ${hpTotal} traspasos`
+  const totalPaginas = Math.ceil(invTotal / invLimit) || 1;
+  const rangeInfo = invTotal > 0
+    ? `Mostrando ${(invPage - 1) * invLimit + 1} - ${Math.min(invPage * invLimit, invTotal)} de ${invTotal} registros`
     : `Mostrando 0 - 0 de 0`;
 
   paginationContainer.innerHTML = `
     <span style="font-size:12px;color:#64748b;font-weight:600">${rangeInfo}</span>
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="btn btn-secondary btn-sm" onclick="cambiarHpPagina(${hpPage - 1})" ${hpPage === 1 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+      <button class="btn btn-secondary btn-sm" onclick="cambiarInvPagina(${invPage - 1})" ${invPage === 1 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
         Anterior
       </button>
-      <span style="font-size:12px;font-weight:700;color:#334155;padding:0 8px">Página ${hpPage} de ${totalPaginas}</span>
-      <button class="btn btn-secondary btn-sm" onclick="cambiarHpPagina(${hpPage + 1})" ${hpPage === totalPaginas ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+      <span style="font-size:12px;font-weight:700;color:#334155;padding:0 8px">Página ${invPage} de ${totalPaginas}</span>
+      <button class="btn btn-secondary btn-sm" onclick="cambiarInvPagina(${invPage + 1})" ${invPage === totalPaginas ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
         Siguiente
       </button>
     </div>
   `;
 }
 
-function filtrarHistorialProceso() {
-  const query = (document.getElementById('hp-buscar')?.value || '').toLowerCase().trim();
-  const filas = document.querySelectorAll('.hp-row');
+function filtrarInventario() {
+  const query = (document.getElementById('inv-buscar')?.value || '').toLowerCase().trim();
+  const filas = document.querySelectorAll('.inv-row');
   filas.forEach(fila => {
     const data = fila.getAttribute('data-search') || '';
     fila.style.display = (!query || data.includes(query)) ? '' : 'none';
   });
 }
 
-async function exportarExcel() {
+async function exportarExcelInventario() {
   if (typeof ExcelJS === 'undefined') {
     alert('Cargando biblioteca de Excel, por favor intenta de nuevo en unos segundos...');
     return;
   }
 
-  const table = document.getElementById('hp-tabla');
-  if (!table) return;
-
-  const btn = document.querySelector('button[onclick="exportarExcel()"]');
+  const btn = document.querySelector('button[onclick="exportarExcelInventario()"]');
   const originalBtnHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.innerHTML = '⏳ Generando Excel...';
@@ -220,14 +250,63 @@ async function exportarExcel() {
   }
 
   try {
+    const data = await fetchTraspasosPaginated({ page: 1, limit: 5000 });
+    const list = data.traspasos || [];
+    
+    const prestamos = list.filter(t => 
+      (t.tipo === 'PRS' || t.tipo === 'GAR') && 
+      t.status !== 'rechazado' &&
+      t.ccOrigen !== '99' && t.ccDestino !== '99'
+    );
+
+    let rows = [];
+    prestamos.forEach(t => {
+      const ccOriObj = S.centrosCosto.find(c => c.id === t.ccOrigen);
+      const ccDesObj = S.centrosCosto.find(c => c.id === t.ccDestino);
+      const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
+      const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
+
+      const devs = list.filter(d => d.tipo === 'DEV' && d.folioOriginalRef === t.folio && d.status !== 'rechazado');
+      const yaDevuelto = {};
+      devs.forEach(dev => {
+        dev.items.forEach(item => {
+          yaDevuelto[item.insumoId] = (yaDevuelto[item.insumoId] || 0) + parseFloat(item.cantidad || 0);
+        });
+      });
+
+      t.items.forEach(item => {
+        const ins = getInsumo(item.insumoId);
+        const cantOriginal = parseFloat(item.cantidad) || 0;
+        const cantDevuelta = yaDevuelto[item.insumoId] || 0;
+        const pendiente = cantOriginal - cantDevuelta;
+
+        rows.push({
+          fecha: t.fechaSolicitud ? new Date(t.fechaSolicitud).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—',
+          folio: t.folio,
+          tipo: t.tipo,
+          ccOrigen: t.ccOrigen,
+          ccDestino: t.ccDestino,
+          clave: ins ? ins.clave : item.insumoId,
+          nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
+          unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
+          prestamoTotal: cantOriginal,
+          devuelta: cantDevuelta,
+          pendiente: pendiente,
+          comentario: item.comentario || ''
+        });
+      });
+    });
+
+    rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Almacén General CC 999');
+    const worksheet = workbook.addWorksheet('Inventario de Préstamos');
 
     worksheet.views = [{ showGridLines: true }];
 
     worksheet.mergeCells('A1:M1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'Reporte de Almacén General - Centro de Costo 999 (Saldos Iniciales)';
+    titleCell.value = 'Reporte de Inventario de Préstamos';
     titleCell.font = { name: 'Montserrat', family: 4, size: 16, bold: true, color: { argb: 'FFFFFF' } };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '16A34A' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -238,7 +317,7 @@ async function exportarExcel() {
 
     const headers = [
       '#', 'Fecha', 'Folio', 'Tipo', 'CC Origen', 'CC Destino', 'Clave Insumo', 
-      'Descripción Insumo', 'Unidad', 'Cant.', 'Precio Unit.', 'Detalle / Comentario', 'Foto'
+      'Descripción Insumo', 'Unidad', 'Cant. Préstamo Total', 'Cant. Devuelta', 'Pend. por Devolver', 'Comentario'
     ];
     worksheet.getRow(3).values = headers;
     worksheet.getRow(3).height = 28;
@@ -247,7 +326,7 @@ async function exportarExcel() {
       const cell = worksheet.getCell(3, c);
       cell.font = { name: 'Montserrat', family: 4, size: 10, bold: true, color: { argb: '333333' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
-      cell.alignment = { vertical: 'middle', horizontal: c === 1 || c === 2 || c === 4 || c === 9 || c === 13 ? 'center' : 'left' };
+      cell.alignment = { vertical: 'middle', horizontal: c === 1 || c === 2 || c === 4 || c === 9 ? 'center' : 'left' };
       cell.border = {
         top: { style: 'thin', color: { argb: 'CBD5E1' } },
         bottom: { style: 'medium', color: { argb: '94A3B8' } },
@@ -256,54 +335,34 @@ async function exportarExcel() {
       };
     }
 
-    const rows = table.querySelectorAll('tbody tr');
     let excelRowIndex = 4;
-
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const tds = row.querySelectorAll('td');
-      if (tds.length === 0) continue;
-
-      const idxValue = tds[0].textContent.trim();
-      const fechaValue = tds[1].textContent.trim();
-      const folioValue = tds[2].textContent.trim();
-      const tipoValue = tds[3].textContent.trim();
-      const ccOriValue = tds[4].textContent.trim();
-      const ccDesValue = tds[5].textContent.trim();
-      const claveValue = tds[6].textContent.trim();
-      const insumoValue = tds[7].textContent.trim();
-      const unidadValue = tds[8].textContent.trim();
-      const cantValue = parseFloat(tds[9].textContent.trim()) || 0;
-      const precioValue = parseFloat(tds[10].textContent.replace(/[$,]/g, '').trim()) || 0;
-      const comentarioValue = tds[11].textContent.trim();
-      
-      const imgEl = tds[12].querySelector('img');
-      const imgUrl = imgEl ? imgEl.getAttribute('src') : null;
+      const r = rows[i];
 
       const newRow = worksheet.addRow([
-        parseInt(idxValue) || idxValue,
-        fechaValue,
-        folioValue,
-        tipoValue,
-        ccOriValue,
-        ccDesValue,
-        claveValue,
-        insumoValue,
-        unidadValue,
-        cantValue,
-        precioValue,
-        comentarioValue === '—' ? '' : comentarioValue,
-        ''
+        i + 1,
+        r.fecha,
+        r.folio,
+        r.tipo,
+        r.ccOrigen,
+        r.ccDestino,
+        r.clave,
+        r.nombre,
+        r.unidad,
+        r.prestamoTotal,
+        r.devuelta,
+        r.pendiente,
+        r.comentario
       ]);
 
-      newRow.height = imgUrl ? 65 : 22;
+      newRow.height = 22;
 
       for (let c = 1; c <= headers.length; c++) {
         const cell = worksheet.getCell(excelRowIndex, c);
         cell.font = { name: 'Montserrat', family: 4, size: 9 };
         cell.alignment = { 
           vertical: 'middle', 
-          horizontal: c === 1 || c === 2 || c === 4 || c === 9 || c === 13 ? 'center' : 'left' 
+          horizontal: c === 1 || c === 2 || c === 4 || c === 9 ? 'center' : 'left' 
         };
         cell.border = {
           top: { style: 'thin', color: { argb: 'F1F5F9' } },
@@ -312,45 +371,10 @@ async function exportarExcel() {
           right: { style: 'thin', color: { argb: 'F1F5F9' } }
         };
 
-        if (c === 11) {
-          cell.numFmt = '"$"#,##0.00';
+        if (c === 10 || c === 11 || c === 12) {
+          cell.numFmt = '#,##0.00';
         }
       }
-
-      if (imgUrl) {
-        try {
-          const response = await fetch(imgUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            
-            const base64Data = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(blob);
-            });
-
-            const matches = base64Data.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
-            if (matches) {
-              const ext = matches[1];
-              const rawBase64 = matches[2];
-              
-              const imageId = workbook.addImage({
-                base64: rawBase64,
-                extension: ext === 'jpg' ? 'jpeg' : ext
-              });
-
-              worksheet.addImage(imageId, {
-                tl: { col: 12, row: excelRowIndex - 1 },
-                ext: { width: 60, height: 60 },
-                editAs: 'oneCell'
-              });
-            }
-          }
-        } catch (imgError) {
-          console.error("Error cargando imagen para el Excel:", imgUrl, imgError);
-        }
-      }
-
       excelRowIndex++;
     }
 
@@ -361,7 +385,7 @@ async function exportarExcel() {
           maxLen = Math.max(maxLen, cell.value.toString().length);
         }
       });
-      const colWidths = [6, 14, 22, 14, 12, 12, 14, 32, 10, 10, 14, 30, 12];
+      const colWidths = [6, 14, 22, 14, 12, 12, 14, 32, 10, 16, 16, 16, 30];
       column.width = Math.max(colWidths[i] || 10, maxLen + 3);
     });
 
@@ -371,7 +395,7 @@ async function exportarExcel() {
     
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Almacen_General_CC999_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = `Inventario_Prestamos_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

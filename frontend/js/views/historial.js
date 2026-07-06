@@ -21,7 +21,19 @@ function renderHistorial() {
   filterTipo = '';
 
   const empresasOpts = S.empresas.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
-  const ccOpts = S.centrosCosto.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const groups = {};
+  S.centrosCosto.forEach(cc => {
+    const dev = S.desarrollos ? S.desarrollos.find(d => d.id === cc.empresaId) : null;
+    const devNombre = dev ? dev.nombre : cc.empresaId;
+    if (!groups[cc.empresaId]) groups[cc.empresaId] = { label: devNombre, items: [] };
+    groups[cc.empresaId].items.push(cc);
+  });
+  const ccOpts = Object.values(groups).map(g =>
+    `<optgroup label="${g.label}">${g.items.map(c => {
+      const num = String(c.id).substring(0, 3);
+      return \`<option value="\${c.id}">\${num} - \${c.nombre}</option>\`;
+    }).join('')}</optgroup>`
+  ).join('');
   const insumosOpts = S.insumos.map(i => `<option value="${i.id}">${i.clave || ''} - ${i.nombre}</option>`).join('');
 
   document.getElementById('content').innerHTML = `

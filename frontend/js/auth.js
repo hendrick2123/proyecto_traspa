@@ -12,10 +12,10 @@ const ROL_LABELS = {
 
 // Vistas permitidas por rol
 const ROL_VIEWS = {
-  almacenista:   ['dashboard', 'nueva-solicitud', 'recepcion', 'historial', 'historial-proceso', 'devolucion'],
-  control_obra:  ['dashboard', 'autorizacion', 'historial', 'historial-proceso', 'devolucion'],
-  residente:     ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'devolucion'],
-  administrador: ['dashboard', 'nueva-solicitud', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'devolucion',
+  almacenista:   ['dashboard', 'nueva-solicitud', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
+  control_obra:  ['dashboard', 'autorizacion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
+  residente:     ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
+  administrador: ['dashboard', 'nueva-solicitud', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion',
                   'empresas', 'centros-costo', 'insumos', 'usuarios']
 };
 
