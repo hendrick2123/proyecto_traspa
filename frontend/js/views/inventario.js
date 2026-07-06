@@ -50,151 +50,162 @@ function cargarInventario() {
     </div>`;
   }
 
-  // Solicitamos un lote grande para poder calcular las devoluciones en base a todo
-  fetchTraspasosPaginated({
-    page: 1,
-    limit: 5000 // Traer un lote grande para poder hacer cruces y calcular total de préstamos
-  })
-  .then(data => {
-    // Actualizamos el cache
-    if (data.traspasos) {
-       S.traspasos = data.traspasos;
-    }
+  try {
+    fetchTraspasosPaginated({
+      page: 1,
+      limit: 5000 // Traer un lote grande para poder hacer cruces y calcular total de préstamos
+    })
+    .then(data => {
+      try {
+        if (data && data.traspasos) {
+           S.traspasos = data.traspasos;
+        }
 
-    const list = data.traspasos || [];
+        const list = (data && data.traspasos) ? data.traspasos : [];
 
-    // Filtrar: solo PRS o GAR, no rechazado y excluir CC 99
-    const prestamos = list.filter(t => 
-      (t.tipo === 'PRS' || t.tipo === 'GAR') && 
-      t.status !== 'rechazado' &&
-      t.ccOrigen !== '99' && t.ccDestino !== '99'
-    );
+        // Filtrar: solo PRS o GAR, no rechazado y excluir CC 99
+        const prestamos = list.filter(t => 
+          (t.tipo === 'PRS' || t.tipo === 'GAR') && 
+          t.status !== 'rechazado' &&
+          t.ccOrigen !== '99' && t.ccDestino !== '99'
+        );
 
-    let rows = [];
-    prestamos.forEach(t => {
-      const ccOriObj = S.centrosCosto.find(c => c.id === t.ccOrigen);
-      const ccDesObj = S.centrosCosto.find(c => c.id === t.ccDestino);
-      const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
-      const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
+        let rows = [];
+        prestamos.forEach(t => {
+          const ccOriObj = S.centrosCosto ? S.centrosCosto.find(c => c.id === t.ccOrigen) : null;
+          const ccDesObj = S.centrosCosto ? S.centrosCosto.find(c => c.id === t.ccDestino) : null;
+          const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
+          const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
 
-      // Calculamos nosotros los DEV
-      const devs = list.filter(d =>
-        d.tipo === 'DEV' &&
-        d.folioOriginalRef === t.folio &&
-        d.status !== 'rechazado'
-      );
-      const yaDevuelto = {};
-      devs.forEach(dev => {
-        dev.items.forEach(item => {
-          yaDevuelto[item.insumoId] = (yaDevuelto[item.insumoId] || 0) + parseFloat(item.cantidad || 0);
+          const devs = list.filter(d =>
+            d.tipo === 'DEV' &&
+            d.folioOriginalRef === t.folio &&
+            d.status !== 'rechazado'
+          );
+          const yaDevuelto = {};
+          devs.forEach(dev => {
+            (dev.items || []).forEach(item => {
+              yaDevuelto[item.insumoId] = (yaDevuelto[item.insumoId] || 0) + parseFloat(item.cantidad || 0);
+            });
+          });
+
+          (t.items || []).forEach(item => {
+            const ins = typeof getInsumo === 'function' ? getInsumo(item.insumoId) : null;
+            const cantOriginal = parseFloat(item.cantidad) || 0;
+            const cantDevuelta = yaDevuelto[item.insumoId] || 0;
+            const pendiente = cantOriginal - cantDevuelta;
+
+            rows.push({
+              fecha: t.fechaSolicitud || '',
+              folio: t.folio,
+              id: t.id,
+              tipo: t.tipo,
+              status: t.status,
+              ccOrigen: t.ccOrigen,
+              ccOrigenNombre: ccOriNombre,
+              ccDestino: t.ccDestino,
+              ccDestinoNombre: ccDesNombre,
+              clave: ins ? ins.clave : item.insumoId,
+              nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
+              unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
+              comentario: item.comentario || '',
+              prestamoTotal: cantOriginal,
+              devuelta: cantDevuelta,
+              pendiente: pendiente
+            });
+          });
         });
-      });
 
-      t.items.forEach(item => {
-        const ins = getInsumo(item.insumoId);
-        const cantOriginal = parseFloat(item.cantidad) || 0;
-        const cantDevuelta = yaDevuelto[item.insumoId] || 0;
-        const pendiente = cantOriginal - cantDevuelta;
+        rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+        
+        invTotal = rows.length;
+        const startIndex = (invPage - 1) * invLimit;
+        const pagedRows = rows.slice(startIndex, startIndex + invLimit);
 
-        rows.push({
-          fecha: t.fechaSolicitud || '',
-          folio: t.folio,
-          id: t.id,
-          tipo: t.tipo,
-          status: t.status,
-          ccOrigen: t.ccOrigen,
-          ccOrigenNombre: ccOriNombre,
-          ccDestino: t.ccDestino,
-          ccDestinoNombre: ccDesNombre,
-          clave: ins ? ins.clave : item.insumoId,
-          nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
-          unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
-          comentario: item.comentario || '',
-          prestamoTotal: cantOriginal,
-          devuelta: cantDevuelta,
-          pendiente: pendiente
-        });
-      });
+        const countEl = document.getElementById('inv-total-count');
+        if (countEl) countEl.textContent = `${invTotal} movimientos`;
+        
+        if (invTotal === 0) {
+          if (container) {
+            container.innerHTML = `
+              <div class="empty-state" style="padding:40px 20px">
+                <div style="font-size:40px;margin-bottom:12px">📦</div>
+                <p>No hay préstamos registrados para las empresas/CC filtrados.</p>
+              </div>`;
+          }
+          const pagEl = document.getElementById('inv-pagination');
+          if (pagEl) pagEl.innerHTML = '';
+          return;
+        }
+
+        if (container) {
+          container.innerHTML = `
+            <table id="inv-tabla">
+              <thead>
+                <tr>
+                  <th style="width:40px">#</th>
+                  <th>Fecha</th>
+                  <th>Folio</th>
+                  <th>Tipo</th>
+                  <th>CC Origen</th>
+                  <th>CC Destino</th>
+                  <th>Clave</th>
+                  <th>Insumo</th>
+                  <th>Unidad</th>
+                  <th>Cant. Préstamo Total</th>
+                  <th>Cant. Devuelta</th>
+                  <th>Pendiente por Devolver</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody id="inv-tbody">
+                ${pagedRows.map((r, idx) => {
+                  const indexOnPage = startIndex + idx + 1;
+                  const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+                  const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
+                                  : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
+                                  : `<span class="badge badge-draft">${r.tipo}</span>`;
+
+                  const pendColor = r.pendiente > 0 ? '#c0392b' : (r.pendiente < 0 ? '#d97706' : '#16a34a');
+                  const pendHtml = `<span style="color:${pendColor};font-weight:700">${(r.pendiente || 0).toFixed(2)}</span>`;
+
+                  return `
+                    <tr class="inv-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
+                      <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
+                      <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
+                      <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
+                      <td>${tBadge}</td>
+                      <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
+                      <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
+                      <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
+                      <td class="text-sm">${r.nombre}</td>
+                      <td class="text-sm">${r.unidad}</td>
+                      <td class="text-sm" style="font-weight:700">${(r.prestamoTotal || 0).toFixed(2)}</td>
+                      <td class="text-sm" style="font-weight:700;color:#16a34a">${(r.devuelta || 0).toFixed(2)}</td>
+                      <td class="text-sm" style="font-weight:700">${pendHtml}</td>
+                      <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        }
+
+        renderInvPaginationControls();
+      } catch (innerErr) {
+        console.error("Error interno renderizando inventario:", innerErr);
+        if (container) container.innerHTML = `<div class="alert alert-danger" style="margin:20px">Error interno procesando los datos: ${innerErr.message}</div>`;
+      }
+    })
+    .catch(err => {
+      console.error("Error de red cargando inventario:", err);
+      if (container) container.innerHTML = `<div class="alert alert-danger" style="margin:20px">Error de conexión al cargar datos del inventario: ${err.message}</div>`;
     });
-
-    rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-    
-    // Paginación local
-    invTotal = rows.length;
-    const startIndex = (invPage - 1) * invLimit;
-    const pagedRows = rows.slice(startIndex, startIndex + invLimit);
-
-    document.getElementById('inv-total-count').textContent = `${invTotal} movimientos`;
-    
-    if (invTotal === 0) {
-      container.innerHTML = `
-        <div class="empty-state" style="padding:40px 20px">
-          <div style="font-size:40px;margin-bottom:12px">📦</div>
-          <p>No hay préstamos registrados para las empresas/CC filtrados.</p>
-        </div>`;
-      document.getElementById('inv-pagination').innerHTML = '';
-      return;
-    }
-
-    container.innerHTML = `
-      <table id="inv-tabla">
-        <thead>
-          <tr>
-            <th style="width:40px">#</th>
-            <th>Fecha</th>
-            <th>Folio</th>
-            <th>Tipo</th>
-            <th>CC Origen</th>
-            <th>CC Destino</th>
-            <th>Clave</th>
-            <th>Insumo</th>
-            <th>Unidad</th>
-            <th>Cant. Préstamo Total</th>
-            <th>Cant. Devuelta</th>
-            <th>Pendiente por Devolver</th>
-            <th>Descripción</th>
-          </tr>
-        </thead>
-        <tbody id="inv-tbody">
-          ${pagedRows.map((r, idx) => {
-            const indexOnPage = startIndex + idx + 1;
-            const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
-            const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
-                            : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
-                            : `<span class="badge badge-draft">${r.tipo}</span>`;
-
-            // Color del pendiente
-            const pendColor = r.pendiente > 0 ? '#c0392b' : (r.pendiente < 0 ? '#d97706' : '#16a34a');
-            const pendHtml = `<span style="color:${pendColor};font-weight:700">${r.pendiente.toFixed(2)}</span>`;
-
-            return `
-              <tr class="inv-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
-                <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
-                <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
-                <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
-                <td>${tBadge}</td>
-                <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
-                <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
-                <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
-                <td class="text-sm">${r.nombre}</td>
-                <td class="text-sm">${r.unidad}</td>
-                <td class="text-sm" style="font-weight:700">${r.prestamoTotal.toFixed(2)}</td>
-                <td class="text-sm" style="font-weight:700;color:#16a34a">${r.devuelta.toFixed(2)}</td>
-                <td class="text-sm" style="font-weight:700">${pendHtml}</td>
-                <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    `;
-
-    renderInvPaginationControls();
-  })
-  .catch(err => {
-    console.error(err);
-    container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del inventario.</div>';
-  });
+  } catch (syncErr) {
+    console.error("Error sincrono cargando inventario:", syncErr);
+    if (container) container.innerHTML = `<div class="alert alert-danger" style="margin:20px">Error inicializando la carga: ${syncErr.message}</div>`;
+  }
 }
 
 function cambiarInvPagina(nuevaPagina) {
