@@ -445,6 +445,9 @@ def save_db_traspaso(t: dict, conn=None):
         return sol_id
     except Exception as e:
         print(f"DB Error save_db_traspaso: {e}", file=sys.stderr, flush=True)
+        if conn:
+            try: conn.rollback()
+            except Exception: pass
         return None
 
 def get_max_folio_number(prefix: str, conn=None):
@@ -794,8 +797,9 @@ async def api_post_traspasos(request: Request, user: dict = Depends(get_current_
         for t in incoming_traspasos:
             if t.get("folio", ""):
                 result = save_db_traspaso(t, conn=pg_conn)
-                if result is not None:
-                    saved_count += 1
+                if result is None:
+                    raise Exception(f"Error al guardar traspaso con folio {t.get('folio')}")
+                saved_count += 1
     except Exception as e:
         print(f"DB Error sync traspasos: {e}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=str(e))

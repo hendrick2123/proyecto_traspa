@@ -126,6 +126,14 @@ function doAutorizar(id, esFirmaDos) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
+  const originalStatus = t.status;
+  const originalAuth = t.autorizador;
+  const originalFecha = t.fechaAutorizacion;
+  const originalComm = t.comentarioAuth;
+  const originalAuth2 = t.autorizador2;
+  const originalFecha2 = t.fechaAutorizacion2;
+  const originalComm2 = t.comentarioAuth2;
+
   if (esFirmaDos) {
     t.status            = 'autorizado';
     t.autorizador2      = nombre;
@@ -138,25 +146,48 @@ function doAutorizar(id, esFirmaDos) {
     t.comentarioAuth    = document.getElementById('auth-comment').value.trim();
   }
 
-  saveState('traspasos');
-  closeModal();
+  const btnSubmit = document.querySelector('.modal-footer .btn-primary');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
+  }
 
-  const successTitle = esFirmaDos ? 'Traspaso Autorizado Completamente' : 'Traspaso Pre-Autorizado';
-  const successDesc = esFirmaDos 
-    ? 'El traspaso está listo para su recepción en destino.' 
-    : 'El traspaso ha sido pre-autorizado. Falta la firma de Control de Obra.';
+  saveState('traspasos')
+    .then(() => {
+      closeModal();
+      const successTitle = esFirmaDos ? 'Traspaso Autorizado Completamente' : 'Traspaso Pre-Autorizado';
+      const successDesc = esFirmaDos 
+        ? 'El traspaso está listo para su recepción en destino.' 
+        : 'El traspaso ha sido pre-autorizado. Falta la firma de Control de Obra.';
 
-  openModal(
-    successTitle,
-    `<div style="text-align:center;padding:20px">
-       <div style="font-size:18px;font-weight:800;margin-bottom:4px">✅ ${successTitle}</div>
-       <div style="font-size:22px;font-weight:900;color:var(--green);margin-bottom:16px">${t.folio}</div>
-       <p style="color:#555;font-size:13px">${successDesc}</p>
-     </div>`,
-    `${esFirmaDos ? `<button class="btn btn-primary" onclick="closeModal();imprimirTraspaso('${id}')">Imprimir Autorización</button>` : ''}
-     <button class="btn btn-secondary" onclick="closeModal();renderAutorizacion()">Continuar</button>`
-  );
-  updateBadges();
+      openModal(
+        successTitle,
+        `<div style="text-align:center;padding:20px">
+           <div style="font-size:18px;font-weight:800;margin-bottom:4px">✅ ${successTitle}</div>
+           <div style="font-size:22px;font-weight:900;color:var(--green);margin-bottom:16px">${t.folio}</div>
+           <p style="color:#555;font-size:13px">${successDesc}</p>
+         </div>`,
+        `${esFirmaDos ? `<button class="btn btn-primary" onclick="closeModal();imprimirTraspaso('${id}')">Imprimir Autorización</button>` : ''}
+         <button class="btn btn-secondary" onclick="closeModal();renderAutorizacion()">Continuar</button>`
+      );
+      updateBadges();
+    })
+    .catch(err => {
+      // Revert state
+      t.status = originalStatus;
+      t.autorizador = originalAuth;
+      t.fechaAutorizacion = originalFecha;
+      t.comentarioAuth = originalComm;
+      t.autorizador2 = originalAuth2;
+      t.fechaAutorizacion2 = originalFecha2;
+      t.comentarioAuth2 = originalComm2;
+
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Autorización';
+      }
+      alert('Error al guardar en el servidor: ' + err.message);
+    });
 }
 
 function modalRechazar(id) {
@@ -214,6 +245,14 @@ function doRechazar(id) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
+  const originalStatus = t.status;
+  const originalAuth = t.autorizador;
+  const originalFecha = t.fechaAutorizacion;
+  const originalComm = t.comentarioAuth;
+  const originalAuth2 = t.autorizador2;
+  const originalFecha2 = t.fechaAutorizacion2;
+  const originalComm2 = t.comentarioAuth2;
+
   if (t.status === 'pre_autorizado') {
     t.status            = 'rechazado';
     t.autorizador2      = nombre;
@@ -226,9 +265,33 @@ function doRechazar(id) {
     t.comentarioAuth    = motivo;
   }
 
-  saveState('traspasos');
-  closeModal();
-  renderAutorizacion();
-  updateBadges();
+  const btnSubmit = document.querySelector('.modal-footer .btn-danger');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
+  }
+
+  saveState('traspasos')
+    .then(() => {
+      closeModal();
+      renderAutorizacion();
+      updateBadges();
+    })
+    .catch(err => {
+      // Revert state
+      t.status = originalStatus;
+      t.autorizador = originalAuth;
+      t.fechaAutorizacion = originalFecha;
+      t.comentarioAuth = originalComm;
+      t.autorizador2 = originalAuth2;
+      t.fechaAutorizacion2 = originalFecha2;
+      t.comentarioAuth2 = originalComm2;
+
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Rechazo';
+      }
+      alert('Error al rechazar: ' + err.message);
+    });
 }
 
