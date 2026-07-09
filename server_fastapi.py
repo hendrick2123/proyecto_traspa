@@ -122,6 +122,9 @@ def get_db_empresas():
             lst.append({"id": "99", "nombre": "Almacen", "rfc": ""})
         CATALOG_CACHE["empresas"] = lst
         return lst
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
     except Exception as e:
         print(f"DB Warning empresas: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["empresas"] = EMPRESAS_DEFAULT
@@ -150,6 +153,9 @@ def get_db_centros_costo():
             lst.append({"id": "999", "empresaId": "99", "nombre": "Almacen", "direccion": ""})
         CATALOG_CACHE["centros_costo"] = lst
         return lst
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
     except Exception as e:
         print(f"DB Warning centros_costo: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["centros_costo"] = CC_DEFAULT
@@ -164,6 +170,9 @@ def get_db_desarrollos():
         rows = cur.fetchall(); cur.close(); conn.close()
         CATALOG_CACHE["desarrollos"] = [{"id": r[0], "nombre": r[1]} for r in rows] if rows else DESARROLLOS_DEFAULT
         return CATALOG_CACHE["desarrollos"]
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
     except Exception as e:
         print(f"DB Warning desarrollos: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["desarrollos"] = DESARROLLOS_DEFAULT
@@ -182,6 +191,9 @@ def get_db_insumos():
         rows = cur.fetchall(); cur.close(); conn.close()
         CATALOG_CACHE["insumos"] = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material"} for r in rows] if rows else INSUMOS_DEFAULT
         return CATALOG_CACHE["insumos"]
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
     except Exception as e:
         print(f"DB Warning insumos: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["insumos"] = INSUMOS_DEFAULT
@@ -378,6 +390,9 @@ def get_db_traspasos_paginated(
         return traspasos, total_count
     except Exception as e:
         print(f"DB Warning get_db_traspasos_paginated: {e}", file=sys.stderr, flush=True)
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
         return [], 0
 
 def save_db_traspaso(t: dict, conn=None):
@@ -448,6 +463,9 @@ def save_db_traspaso(t: dict, conn=None):
         if conn:
             try: conn.rollback()
             except Exception: pass
+            if close_conn:
+                try: conn.close()
+                except Exception: pass
         return None
 
 def get_max_folio_number(prefix: str, conn=None):
@@ -651,16 +669,16 @@ async def access_restriction_middleware(request: Request, call_next):
 # ─── API Routes ───────────────────────────────────────────────────────────────
 
 @app.get("/api/public/empresas")
-async def api_public_empresas():
+def api_public_empresas():
     return {"empresas": get_db_empresas()}
 
 @app.get("/api/public/centros_costo")
-async def api_public_centros_costo():
+def api_public_centros_costo():
     return {"centrosCosto": get_db_centros_costo()}
 
 # ─── Empresas REST Endpoints ───
 @app.get("/api/empresas")
-async def api_get_empresas(user: dict = Depends(get_current_user)):
+def api_get_empresas(user: dict = Depends(get_current_user)):
     empresas = get_db_empresas()
     if os.path.exists(DB_FILE):
         try:
@@ -693,7 +711,7 @@ async def api_post_empresas(request: Request, user: dict = Depends(get_current_u
 
 # ─── Centros de Costo REST Endpoints ───
 @app.get("/api/centros_costo")
-async def api_get_centros_costo(user: dict = Depends(get_current_user)):
+def api_get_centros_costo(user: dict = Depends(get_current_user)):
     centros_costo = get_db_centros_costo()
     if os.path.exists(DB_FILE):
         try:
@@ -726,7 +744,7 @@ async def api_post_centros_costo(request: Request, user: dict = Depends(get_curr
 
 # ─── Insumos REST Endpoints ───
 @app.get("/api/insumos")
-async def api_get_insumos(user: dict = Depends(get_current_user)):
+def api_get_insumos(user: dict = Depends(get_current_user)):
     insumos = get_db_insumos()
     if os.path.exists(DB_FILE):
         try:
@@ -759,12 +777,12 @@ async def api_post_insumos(request: Request, user: dict = Depends(get_current_us
 
 # ─── Desarrollos REST Endpoints ───
 @app.get("/api/desarrollos")
-async def api_get_desarrollos(user: dict = Depends(get_current_user)):
+def api_get_desarrollos(user: dict = Depends(get_current_user)):
     return {"desarrollos": get_db_desarrollos()}
 
 # ─── Traspasos REST Endpoints ───
 @app.get("/api/traspasos")
-async def api_get_traspasos(
+def api_get_traspasos(
     page: int = 1,
     limit: int = 0,
     status: Optional[str] = None,
@@ -811,7 +829,7 @@ async def api_post_traspasos(request: Request, user: dict = Depends(get_current_
 
 # ─── Folios REST Endpoints ───
 @app.get("/api/folios")
-async def api_get_folios(user: dict = Depends(get_current_user)):
+def api_get_folios(user: dict = Depends(get_current_user)):
     pg_conn = None
     try:
         pg_conn = get_db_connection()
@@ -830,7 +848,7 @@ async def api_get_folios(user: dict = Depends(get_current_user)):
     return {"folios": {"PRS": folio_prs, "TOB": folio_tob, "DEV": folio_dev, "GAR": folio_gar}}
 
 @app.get("/api/state")
-async def api_get_state(user: dict = Depends(get_current_user)):
+def api_get_state(user: dict = Depends(get_current_user)):
     empresas      = get_db_empresas()
     centros_costo = get_db_centros_costo()
     insumos       = get_db_insumos()
@@ -927,7 +945,7 @@ async def api_post_state(request: Request, user: dict = Depends(get_current_user
     return {"status": "success"}
 
 @app.get("/api/users")
-async def api_get_users(user: dict = Depends(get_current_user)):
+def api_get_users(user: dict = Depends(get_current_user)):
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
@@ -956,6 +974,9 @@ async def api_login(request: Request):
         """, (username, hash_password(password)))
         row = cur.fetchone(); cur.close(); conn.close()
     except Exception as e:
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
         raise HTTPException(status_code=500, detail=str(e))
     if not row:
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
