@@ -13,3 +13,4 @@ ENV/
 
 # Base de datos local
 db.json
+sessions.json

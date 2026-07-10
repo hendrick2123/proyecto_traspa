@@ -22,36 +22,9 @@ PORT = 8000
 FRONTEND_DIR = "frontend"
 DB_FILE = "db.json"
 
-# ─── Load .env ────────────────────────────────────────────────────────────────
-def load_dotenv(filepath=".env"):
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    parts = line.split("=", 1)
-                    if len(parts) == 2:
-                        key = parts[0].strip()
-                        val = parts[1].strip()
-                        if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                            val = val[1:-1]
-                        os.environ[key] = val
-        except Exception as e:
-            print(f"Warning: Could not read .env file: {e}", file=sys.stderr, flush=True)
+from db_config import DB_CONFIG, get_db_connection
 
-load_dotenv()
-PORT = int(os.environ.get("PORT", PORT))
-
-DB_CONFIG = {
-    "host":            os.environ.get("DB_HOST", "localhost"),
-    "port":            os.environ.get("DB_PORT", "5432"),
-    "dbname":          os.environ.get("DB_NAME", "postgres"),
-    "user":            os.environ.get("DB_USER", "postgres"),
-    "password":        os.environ.get("DB_PASSWORD", ""),
-    "connect_timeout": int(os.environ.get("DB_TIMEOUT", 5))
-}
+PORT = int(os.environ.get("PORT", 8000))
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip() for origin in os.environ.get(
@@ -95,8 +68,32 @@ def hash_password(password: str) -> str:
     salted = "gu_salt_2026_" + password
     return hashlib.sha256(salted.encode("utf-8")).hexdigest()
 
-# ─── Active sessions (in-memory) ──────────────────────────────────────────────
+# ─── Active sessions (persisted in sessions.json with expiration) ─────────────
 ACTIVE_SESSIONS: dict = {}
+SESSIONS_FILE = "sessions.json"
+
+def load_sessions():
+    global ACTIVE_SESSIONS
+    if os.path.exists(SESSIONS_FILE):
+        try:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                now_time = time.time()
+                ACTIVE_SESSIONS = {
+                    t: s for t, s in data.items() if s.get("expires_at", 0) > now_time
+                }
+        except Exception as e:
+            print(f"Warning: Could not load sessions: {e}", file=sys.stderr, flush=True)
+            ACTIVE_SESSIONS = {}
+    else:
+        ACTIVE_SESSIONS = {}
+
+def save_sessions():
+    try:
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(ACTIVE_SESSIONS, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Warning: Could not save sessions: {e}", file=sys.stderr, flush=True)
 
 # ─── Catalog Cache ────────────────────────────────────────────────────────────
 CATALOG_CACHE: dict = {
@@ -105,10 +102,6 @@ CATALOG_CACHE: dict = {
     "desarrollos": None,
     "insumos": None
 }
-
-# ─── DB helpers ───────────────────────────────────────────────────────────────
-def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
 
 def get_db_empresas():
     if CATALOG_CACHE["empresas"] is not None:
@@ -592,15 +585,23 @@ def get_current_user(request: Request):
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="No autorizado. Inicie sesión nuevamente.")
     token = auth_header.split(" ", 1)[1].strip()
-    user  = ACTIVE_SESSIONS.get(token)
-    if not user:
+    session = ACTIVE_SESSIONS.get(token)
+    if not session:
         raise HTTPException(status_code=401, detail="No autorizado. Inicie sesión nuevamente.")
-    return user
+    
+    # Check expiration
+    if time.time() > session.get("expires_at", 0):
+        ACTIVE_SESSIONS.pop(token, None)
+        save_sessions()
+        raise HTTPException(status_code=401, detail="Sesión expirada. Inicie sesión nuevamente.")
+        
+    return session["user"]
 
 # ─── Lifespan (startup) ───────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    load_sessions()
     print("DB: Pre-cargando catálogos...", flush=True)
     get_db_empresas()
     get_db_centros_costo()
@@ -984,7 +985,12 @@ async def api_login(request: Request):
         raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
     user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
     token = hashlib.sha256(os.urandom(16)).hexdigest()
-    ACTIVE_SESSIONS[token] = user
+    # Expira en 8 horas (28800 segundos)
+    ACTIVE_SESSIONS[token] = {
+        "user": user,
+        "expires_at": time.time() + 28800
+    }
+    save_sessions()
     print(f"Auth: Login exitoso - {username} ({row[4]}) empresa={row[6]}", flush=True)
     return {"user": user, "token": token}
 

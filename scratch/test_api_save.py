@@ -76,13 +76,16 @@ except Exception as e:
     exit(1)
 
 # 5. Query DB directly to verify how the item was stored
-DB_CONFIG = {
-    "host": "aws-1-us-east-1.pooler.supabase.com",
-    "port": "6543",
-    "dbname": "postgres",
-    "user": "hendrick_user.vgxlpfsjruugrdiomjft",
-    "password": "HendrickPostgresData2077!"
-}
+# Cargar DB_CONFIG de forma segura desde db_config.py
+import sys
+import os
+# Agregar directorios para buscar db_config
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from db_config import DB_CONFIG
+except ImportError:
+    DB_CONFIG = {}
 
 conn = psycopg2.connect(**DB_CONFIG)
 cur = conn.cursor()
