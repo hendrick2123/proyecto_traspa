@@ -180,6 +180,8 @@ function updateInfoOri() {
         🏢 ${devNombre}
        </span>`
     : '';
+  // Re-render items in case CC Origen changed
+  renderItems();
 }
 
 // Shows a badge below the Destino CC select with the related Desarrollo
@@ -200,7 +202,7 @@ function updateInfoDes() {
 }
 
 function agregarItem() {
-  solicitudItems.push({ insumoId: '', cantidad: 1, detalles: [{precio: 0, comentario: ''}] });
+  solicitudItems.push({ insumoId: '', cantidad: 1, detalles: [{precio: 0, comentario: '', imagen: ''}] });
   renderItems();
 }
 
@@ -251,6 +253,10 @@ function _filterInsDropdown(i) {
 }
 
 function _selectInsumo(i, insumoId) {
+  const oldInsumoId = solicitudItems[i].insumoId;
+  const oldIns = oldInsumoId ? getInsumo(oldInsumoId) : null;
+  const oldNombre = oldIns ? oldIns.nombre : '';
+
   solicitudItems[i].insumoId = insumoId;
   const ins = getInsumo(insumoId);
   const input = document.getElementById('ins-search-' + i);
@@ -259,6 +265,20 @@ function _selectInsumo(i, insumoId) {
   // Actualizar celda de unidad
   const unidadCell = document.getElementById('ins-unit-' + i);
   if (unidadCell) unidadCell.textContent = ins ? ins.unidad : '—';
+
+  // Si es un traspaso de 999 a 999, inicializar/actualizar comentarios vacíos o con el nombre del insumo anterior
+  const ccOri = document.getElementById('sol-cc-ori')?.value;
+  const ccDes = document.getElementById('sol-cc-des')?.value;
+  if (ccOri === '999' && ccDes === '999' && ins) {
+    if (solicitudItems[i].detalles) {
+      solicitudItems[i].detalles.forEach(d => {
+        if (!d.comentario || !d.comentario.trim() || d.comentario === oldNombre) {
+          d.comentario = ins.nombre;
+        }
+      });
+    }
+  }
+  renderItems();
 }
 
 // Cierra dropdowns al hacer click fuera
@@ -288,7 +308,22 @@ function renderItems() {
     if (isSaldos && item.cantidad > 0) {
       if (!item.detalles) item.detalles = [];
       const cant = Math.floor(item.cantidad);
-      while(item.detalles.length < cant) item.detalles.push({precio: 0, comentario: '', imagen: ''});
+      const ccOri = document.getElementById('sol-cc-ori')?.value;
+      const ccDes = document.getElementById('sol-cc-des')?.value;
+      
+      const insName = ins ? ins.nombre : '';
+      const defaultComentario = (ccOri === '999' && ccDes === '999') ? insName : '';
+
+      // Si es un traspaso del 999 al 999, pre-rellenar con el nombre del insumo los comentarios vacíos
+      if (ccOri === '999' && ccDes === '999') {
+        item.detalles.forEach(d => {
+          if (!d.comentario || !d.comentario.trim()) {
+            d.comentario = insName;
+          }
+        });
+      }
+
+      while(item.detalles.length < cant) item.detalles.push({precio: 0, comentario: defaultComentario, imagen: ''});
       while(item.detalles.length > cant) item.detalles.pop();
     }
 

@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import hashlib
+import bcrypt
 import re
 import time
 import uuid
@@ -64,7 +65,19 @@ DESARROLLOS_DEFAULT = [
 ]
 
 # ─── Auth helpers ─────────────────────────────────────────────────────────────
-def hash_password(password: str) -> str:
+def hash_password_bcrypt(password: str) -> str:
+    """Hash a password using bcrypt (secure, with auto-generated salt)."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password_bcrypt(password: str, hashed: str) -> bool:
+    """Verify a password against a bcrypt hash."""
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+def hash_password_legacy(password: str) -> str:
+    """Legacy SHA-256 hash (kept only for migration of existing passwords)."""
     salted = "gu_salt_2026_" + password
     return hashlib.sha256(salted.encode("utf-8")).hexdigest()
 
@@ -502,7 +515,7 @@ def init_db():
             cur.execute("""
                 INSERT INTO testing.prof_usuarios (nombre, correo, username, password, rol)
                 VALUES (%s, %s, %s, %s, %s)
-            """, ('Administrador', 'admin@grupourban.ia', 'admin', hash_password('admin123'), 'administrador'))
+            """, ('Administrador', 'admin@grupourban.ia', 'admin', hash_password_bcrypt('admin123'), 'administrador'))
             print("Auth: Usuario admin creado. usuario=admin | password=admin123", flush=True)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS testing.solicitudes_traspasos_v2 (
@@ -969,20 +982,62 @@ async def api_login(request: Request):
         raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos.")
     try:
         conn = get_db_connection(); cur = conn.cursor()
+        # Fetch user WITH stored password hash for verification
         cur.execute("""
-            SELECT id, nombre, correo, username, rol, activo, empresa_id, cc_ids
-            FROM testing.prof_usuarios WHERE username = %s AND password = %s
-        """, (username, hash_password(password)))
-        row = cur.fetchone(); cur.close(); conn.close()
+            SELECT id, nombre, correo, username, rol, activo, empresa_id, cc_ids, password
+            FROM testing.prof_usuarios WHERE username = %s
+        """, (username,))
+        row = cur.fetchone()
     except Exception as e:
         if 'conn' in locals() and conn:
             try: conn.close()
             except: pass
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+    
     if not row:
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+    
+    stored_hash = row[8]
+    password_valid = False
+    needs_upgrade = False
+    
+    # Try bcrypt verification first (new format)
+    if stored_hash and stored_hash.startswith("$2"):
+        password_valid = verify_password_bcrypt(password, stored_hash)
+    else:
+        # Fallback: try legacy SHA-256 verification
+        if stored_hash == hash_password_legacy(password):
+            password_valid = True
+            needs_upgrade = True  # Mark for automatic upgrade to bcrypt
+    
+    if not password_valid:
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
+        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+    
     if not row[5]:
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
         raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
+    
+    # Auto-upgrade legacy SHA-256 hash to bcrypt
+    if needs_upgrade:
+        try:
+            new_hash = hash_password_bcrypt(password)
+            cur.execute("UPDATE testing.prof_usuarios SET password = %s WHERE id = %s;", (new_hash, row[0]))
+            conn.commit()
+            print(f"Auth: Password de '{username}' migrado de SHA-256 a bcrypt.", flush=True)
+        except Exception as e:
+            print(f"Auth Warning: No se pudo migrar password de {username}: {e}", file=sys.stderr, flush=True)
+    
+    try: cur.close(); conn.close()
+    except: pass
+    
     user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
     token = hashlib.sha256(os.urandom(16)).hexdigest()
     # Expira en 8 horas (28800 segundos)
@@ -995,7 +1050,11 @@ async def api_login(request: Request):
     return {"user": user, "token": token}
 
 @app.post("/api/auth/register", status_code=201)
-async def api_register(request: Request):
+async def api_register(request: Request, user: dict = Depends(get_current_user)):
+    # Solo administradores pueden registrar nuevos usuarios
+    if user.get("rol") != "administrador":
+        raise HTTPException(status_code=403, detail="Solo los administradores pueden registrar nuevos usuarios.")
+    
     body       = await request.json()
     nombre     = body.get("nombre","").strip()
     username   = body.get("username","").strip()
@@ -1020,15 +1079,15 @@ async def api_register(request: Request):
         cur.execute("""
             INSERT INTO testing.prof_usuarios (nombre, correo, username, password, rol, empresa_id, cc_ids)
             VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id;
-        """, (nombre, correo, username, hash_password(password), rol, empresa_id or None, cc_ids or None))
+        """, (nombre, correo, username, hash_password_bcrypt(password), rol, empresa_id or None, cc_ids or None))
         new_id = cur.fetchone()[0]
         conn.commit(); cur.close(); conn.close()
-        print(f"Auth: Nuevo usuario registrado - {username} ({rol})", flush=True)
+        print(f"Auth: Nuevo usuario registrado por {user.get('username','')} - {username} ({rol})", flush=True)
         return {"ok": True, "id": new_id}
     except psycopg2.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail="El usuario o correo ya está registrado.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 @app.put("/api/users/{user_id}")
 async def api_update_user(user_id: int, request: Request, user: dict = Depends(get_current_user)):
@@ -1041,7 +1100,7 @@ async def api_update_user(user_id: int, request: Request, user: dict = Depends(g
     if "password" in body and body["password"]:
         pwd = body["password"]
         if len(pwd) < 6: raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres.")
-        updates.append("password = %s"); params.append(hash_password(pwd))
+        updates.append("password = %s"); params.append(hash_password_bcrypt(pwd))
     if "rol"       in body: updates.append("rol = %s"); params.append(body["rol"])
     if "activo"    in body: updates.append("activo = %s"); params.append(body["activo"])
     if "empresa_id"in body: updates.append("empresa_id = %s"); params.append(body["empresa_id"] or None)

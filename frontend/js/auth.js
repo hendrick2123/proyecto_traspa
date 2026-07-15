@@ -136,9 +136,9 @@ const originalFetch = window.fetch;
 window.fetch = function (url, options) {
   options = options || {};
   
-  // No inyectar token si la petición es al login o al registro público o estáticos locales
+  // No inyectar token si la petición es al login o a las APIs públicas
   const isUrlString = typeof url === 'string';
-  const isPublicApi = isUrlString && (url.includes('/api/auth/login') || url.includes('/api/auth/register') || url.includes('/api/public/'));
+  const isPublicApi = isUrlString && (url.includes('/api/auth/login') || url.includes('/api/public/'));
   
   if (isPublicApi) {
     return originalFetch(url, options);

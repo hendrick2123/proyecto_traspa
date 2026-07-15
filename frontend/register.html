@@ -586,20 +586,30 @@
       btn.disabled = true;
 
       try {
+        const token = sessionStorage.getItem('gu_token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        
         const res = await fetch(API_BASE + '/api/auth/register', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ nombre, username, correo, rol, empresa_id, cc_ids, password: pass })
         });
         const data = await res.json();
 
-        if (!res.ok || data.error) {
-          errEl.textContent = data.error || 'Error al registrar usuario.';
+        if (!res.ok) {
+          errEl.textContent = data.detail || data.error || 'Error al registrar usuario.';
           errEl.style.display = 'block';
         } else {
-          succEl.textContent = '¡Cuenta creada exitosamente! Redirigiendo al login...';
+          succEl.textContent = '¡Usuario "' + username + '" creado exitosamente!';
           succEl.style.display = 'block';
-          setTimeout(() => { window.location.href = 'login.html'; }, 2000);
+          // Limpiar formulario para poder registrar otro
+          document.getElementById('reg-nombre').value = '';
+          document.getElementById('reg-username').value = '';
+          document.getElementById('reg-correo').value = '';
+          document.getElementById('reg-pass').value = '';
+          document.getElementById('reg-pass2').value = '';
+          document.querySelectorAll('input[name="reg-cc-chk"]:checked').forEach(cb => cb.checked = false);
         }
       } catch (e) {
         errEl.textContent = 'No se pudo conectar con el servidor.';
@@ -609,6 +619,27 @@
       btn.innerHTML = 'Crear cuenta';
       btn.disabled = false;
     }
+
+    // Verificar que solo un administrador autenticado pueda acceder a esta página
+    (function checkAdminAccess() {
+      try {
+        const raw = sessionStorage.getItem('gu_user');
+        const user = raw ? JSON.parse(raw) : null;
+        if (!user || user.rol !== 'administrador') {
+          document.body.innerHTML = `
+            <div style="font-family:'Montserrat',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;color:#fff;margin:0">
+              <div style="text-align:center;padding:40px;background:rgba(255,255,255,0.05);border-radius:16px;max-width:480px">
+                <h1 style="font-size:24px;margin-bottom:12px">🔒 Acceso Restringido</h1>
+                <p style="color:#aaa;font-size:14px;margin-bottom:20px">Solo los administradores pueden registrar nuevos usuarios.</p>
+                <a href="login.html" style="color:#61a60e;font-size:14px;text-decoration:none;font-weight:700">← Ir al inicio de sesión</a>
+              </div>
+            </div>`;
+          return;
+        }
+      } catch (e) {
+        window.location.href = 'login.html';
+      }
+    })();
 
     // Load empresas on page load
     fetchEmpresas();
