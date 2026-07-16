@@ -4,6 +4,8 @@
 
 function renderRecepcion() {
   const autorizados = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'autorizado'));
+  const user = getUser();
+  const showRevert = user && ['residente', 'control_obra', 'administrador'].includes(user.rol);
 
   document.getElementById('content').innerHTML = `
   <div class="alert alert-info" style="margin-bottom:16px">
@@ -35,6 +37,7 @@ function renderRecepcion() {
                   <div style="display:flex;gap:6px">
                     <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
                     <button class="btn btn-primary btn-sm"   onclick="modalRecibir('${t.id}')">Confirmar Recepción</button>
+                    ${showRevert ? `<button class="btn btn-danger btn-sm" onclick="confirmarRevertir('${t.id}')" title="Revertir autorizaciones y regresar a pendiente">Revertir</button>` : ''}
                   </div>
                 </td>
               </tr>`).join('')}
@@ -43,6 +46,72 @@ function renderRecepcion() {
       }
     </div>
   </div>`;
+}
+
+function confirmarRevertir(id) {
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  openModal(
+    `Revertir Autorización ${t.folio}`,
+    `<div class="alert alert-warning" style="margin-bottom:16px">
+       <strong>¿Está seguro de que desea revertir las autorizaciones de este traspaso?</strong>
+       <br><br>Esto restablecerá el estado a <strong>Pendiente de Autorización</strong> y eliminará las firmas actuales, permitiendo modificar el vale.
+     </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-danger"    onclick="doRevertir('${id}')">Confirmar Reversión</button>`
+  );
+}
+
+function doRevertir(id) {
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  const originalStatus = t.status;
+  const originalAuth = t.autorizador;
+  const originalFecha = t.fechaAutorizacion;
+  const originalComm = t.comentarioAuth;
+  const originalAuth2 = t.autorizador2;
+  const originalFecha2 = t.fechaAutorizacion2;
+  const originalComm2 = t.comentarioAuth2;
+
+  // Reset all authorization fields to roll back to pending
+  t.status = 'pendiente';
+  t.autorizador = null;
+  t.fechaAutorizacion = null;
+  t.comentarioAuth = null;
+  t.autorizador2 = null;
+  t.fechaAutorizacion2 = null;
+  t.comentarioAuth2 = null;
+
+  const btnSubmit = document.querySelector('.modal-overlay .btn-danger');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
+  }
+
+  saveState('traspasos')
+    .then(() => {
+      closeModal();
+      renderRecepcion();
+      updateBadges();
+    })
+    .catch(err => {
+      // Revert state back on error
+      t.status = originalStatus;
+      t.autorizador = originalAuth;
+      t.fechaAutorizacion = originalFecha;
+      t.comentarioAuth = originalComm;
+      t.autorizador2 = originalAuth2;
+      t.fechaAutorizacion2 = originalFecha2;
+      t.comentarioAuth2 = originalComm2;
+
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Reversión';
+      }
+      alert('Error al guardar en el servidor: ' + err.message);
+    });
 }
 
 function modalRecibir(id) {
