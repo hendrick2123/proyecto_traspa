@@ -26,9 +26,9 @@ function renderNuevaSolicitud() {
         <div class="form-group">
           <label>Tipo de Traspaso *</label>
           <select id="sol-tipo" onchange="solicitudTipo=this.value">
-            <option value="PRS">Por Préstamo</option>
-            <option value="TOB">Por Término de Obra</option>
-            <option value="GAR">Por Garantía</option>
+            <option value="PRS">POR PRÉSTAMO</option>
+            <option value="TOB">POR TÉRMINO DE OBRA</option>
+            <option value="GAR">POR GARANTÍA</option>
           </select>
         </div>
         <div class="form-group">

@@ -276,8 +276,10 @@ def get_db_traspasos_paginated(
     status: Optional[str] = None,
     tipo: Optional[str] = None,
     empresa: Optional[str] = None,
+    empresa_rol: Optional[str] = None,
     cc: Optional[str] = None,
     insumo: Optional[str] = None,
+    q: Optional[str] = None,
     user: Optional[dict] = None
 ):
     query = """
@@ -317,11 +319,31 @@ def get_db_traspasos_paginated(
         where_clauses.append("(s.cc_origen = %s OR s.cc_destino = %s)")
         params.extend([cc, cc])
     if empresa:
-        where_clauses.append("(s.empresa_origen = %s OR s.empresa_destino = %s)")
-        params.extend([empresa, empresa])
+        if empresa_rol == "origen":
+            where_clauses.append("s.empresa_origen = %s")
+            params.append(empresa)
+        elif empresa_rol == "destino":
+            where_clauses.append("s.empresa_destino = %s")
+            params.append(empresa)
+        else:
+            where_clauses.append("(s.empresa_origen = %s OR s.empresa_destino = %s)")
+            params.extend([empresa, empresa])
     if insumo:
         where_clauses.append("d.clave_insumo = %s")
         params.append(insumo)
+
+    if q:
+        q_term = f"%{q}%"
+        # Búsqueda global en folio, solicitante, observaciones o en el detalle de insumos asociados
+        where_clauses.append("""
+            (s.folio ILIKE %s OR s.solicitante ILIKE %s OR s.observaciones ILIKE %s 
+             OR EXISTS (
+                SELECT 1 FROM testing.detalle_traspaso_insumos_v2 d2
+                WHERE d2.id_solicitud = s.id_solicitud 
+                AND (d2.clave_insumo ILIKE %s OR d2.descripcion_insumo ILIKE %s OR d2.comentario ILIKE %s)
+             ))
+        """)
+        params.extend([q_term, q_term, q_term, q_term, q_term, q_term])
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
@@ -802,8 +824,10 @@ def api_get_traspasos(
     status: Optional[str] = None,
     tipo: Optional[str] = None,
     empresa: Optional[str] = None,
+    empresa_rol: Optional[str] = None,
     cc: Optional[str] = None,
     insumo: Optional[str] = None,
+    q: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     traspasos, total = get_db_traspasos_paginated(
@@ -812,8 +836,10 @@ def api_get_traspasos(
         status=status,
         tipo=tipo,
         empresa=empresa,
+        empresa_rol=empresa_rol,
         cc=cc,
         insumo=insumo,
+        q=q,
         user=user
     )
     return {"traspasos": traspasos, "total": total, "page": page, "limit": limit}

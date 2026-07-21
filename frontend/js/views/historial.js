@@ -7,20 +7,25 @@ const historialLimit = 25;
 let historialTotal = 0;
 
 let filterEmpresa = '';
+let filterEmpresaRol = ''; // '', 'origen', 'destino'
 let filterCc = '';
 let filterInsumo = '';
 let filterStatus = '';
 let filterTipo = '';
+let filterQ = '';
+let historialSearchTimer = null;
 
 function renderHistorial() {
   historialPage = 1;
   filterEmpresa = '';
+  filterEmpresaRol = '';
   filterCc = '';
   filterInsumo = '';
   filterStatus = '';
   filterTipo = '';
+  filterQ = '';
 
-  const empresasOpts = S.empresas.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+  const empresasOpts = S.empresas.map(e => `<option value="${e.id}">${e.id} – ${e.nombre.split(' SA')[0]}</option>`).join('');
   const groups = {};
   S.centrosCosto.forEach(cc => {
     const dev = S.desarrollos ? S.desarrollos.find(d => d.id === cc.empresaId) : null;
@@ -41,7 +46,15 @@ function renderHistorial() {
   <div class="card">
     <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
       <h3 id="hist-count">Historial de Movimientos (Cargando...)</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="hist-buscar" placeholder="🔍 Buscar folio, solicitante, insumo..."
+               oninput="buscarHistorial()"
+               style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;width:260px;font-family:'Montserrat',sans-serif;height:32px">
+        <div style="display:inline-flex;border:1px solid #ccc;border-radius:6px;padding:2px;background:#f1f5f9;gap:2px">
+          <button id="btn-rol-todos" class="btn-rol active" onclick="cambiarEmpresaRol('')" style="border:none;background:var(--green);color:#fff;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Ambos</button>
+          <button id="btn-rol-origen" class="btn-rol" onclick="cambiarEmpresaRol('origen')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Origen</button>
+          <button id="btn-rol-destino" class="btn-rol" onclick="cambiarEmpresaRol('destino')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Destino</button>
+        </div>
         <select id="fil-empresa" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todas las empresas</option>
           ${empresasOpts}
@@ -50,9 +63,11 @@ function renderHistorial() {
           <option value="">Todos los CC</option>
           ${ccOpts}
         </select>
-        <select id="fil-insumo" class="btn btn-secondary" style="height:32px; max-width: 200px;" onchange="filtrarHistorial()">
-          <option value="">Todos los insumos</option>
-          ${insumosOpts}
+        <select id="fil-tipo" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
+          <option value="">Todos los tipos</option>
+          <option value="PRS">Préstamo</option>
+          <option value="TOB">Término de Obra</option>
+          <option value="GAR">Garantía</option>
         </select>
         <select id="fil-status" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todos los estados</option>
@@ -64,11 +79,9 @@ function renderHistorial() {
           <option value="devuelto_total">Dev. Total</option>
           <option value="rechazado">Rechazado</option>
         </select>
-        <select id="fil-tipo" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
-          <option value="">Todos los tipos</option>
-          <option value="PRS">Préstamo</option>
-          <option value="TOB">Término de Obra</option>
-          <option value="GAR">Garantía</option>
+        <select id="fil-insumo" class="btn btn-secondary" style="height:32px; max-width: 200px;" onchange="filtrarHistorial()">
+          <option value="">Todos los insumos</option>
+          ${insumosOpts}
         </select>
       </div>
     </div>
@@ -97,8 +110,10 @@ function cargarHistorial() {
     status: filterStatus,
     tipo: filterTipo,
     empresa: filterEmpresa,
+    empresa_rol: filterEmpresaRol,
     cc: filterCc,
-    insumo: filterInsumo
+    insumo: filterInsumo,
+    q: filterQ
   })
   .then(data => {
     const list = data.traspasos || [];
@@ -123,6 +138,40 @@ function cargarHistorial() {
     console.error(err);
     document.getElementById('hist-table').innerHTML = '<div class="alert alert-danger">Error al cargar datos del servidor</div>';
   });
+}
+
+function cambiarEmpresaRol(rol) {
+  filterEmpresaRol = rol;
+  
+  // Actualizar estilos de los botones
+  const btns = {
+    '': document.getElementById('btn-rol-todos'),
+    'origen': document.getElementById('btn-rol-origen'),
+    'destino': document.getElementById('btn-rol-destino')
+  };
+  
+  Object.entries(btns).forEach(([k, btn]) => {
+    if (!btn) return;
+    if (k === rol) {
+      btn.style.background = 'var(--green)';
+      btn.style.color = '#fff';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = '#475569';
+    }
+  });
+  
+  historialPage = 1;
+  cargarHistorial();
+}
+
+function buscarHistorial() {
+  clearTimeout(historialSearchTimer);
+  historialSearchTimer = setTimeout(() => {
+    filterQ = document.getElementById('hist-buscar')?.value.trim() || '';
+    historialPage = 1;
+    cargarHistorial();
+  }, 400);
 }
 
 function filtrarHistorial() {

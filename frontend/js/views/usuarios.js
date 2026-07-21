@@ -7,7 +7,7 @@ function renderUsuarios() {
   <div class="card">
     <div class="card-header">
       <h3>Gestión de Usuarios</h3>
-      <a href="register.html" target="_blank" class="btn btn-primary">
+      <a href="register.html" class="btn btn-primary">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:14px;height:14px">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>

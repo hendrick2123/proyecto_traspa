@@ -10,7 +10,7 @@ function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
       ${pendientes.length === 0
         ? '<div class="empty-state"><p>Sin solicitudes pendientes</p><span>Todas las solicitudes han sido procesadas</span></div>'
         : `<table>
-            <thead><tr><th>Folio</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Insumos</th><th>Solicitante</th><th>Fecha Sol.</th>${esFirmaDos ? '<th>Firma 1 (Residente)</th>' : ''}<th>Acciones</th></tr></thead>
+            <thead><tr><th>Folio</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Insumos</th><th>Solicitante</th><th>Fecha Sol.</th>${esFirmaDos ? '<th style="display:none">VoBo (Residente)</th>' : ''}<th>Acciones</th></tr></thead>
             <tbody>
               ${pendientes.map(t => `
               <tr>
@@ -30,7 +30,7 @@ function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
                 <td class="text-sm">${t.items.length} insumo(s)</td>
                 <td class="text-sm">${t.solicitante}</td>
                 <td class="text-sm">${fmtDate(t.fechaSolicitud)}</td>
-                ${esFirmaDos ? `<td class="text-sm"><span style="font-weight:600">${t.autorizador || '—'}</span><div style="color:#888;font-size:10px">${fmtDate(t.fechaAutorizacion)}</div></td>` : ''}
+                ${esFirmaDos ? `<td style="display:none" class="text-sm"><span style="font-weight:600">${t.autorizador || '—'}</span><div style="color:#888;font-size:10px">${fmtDate(t.fechaAutorizacion)}</div></td>` : ''}
                 <td>
                   <div style="display:flex;gap:6px">
                     <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
@@ -52,20 +52,20 @@ function renderAutorizacion() {
 
   let html = `
   <div class="alert alert-info" style="margin-bottom:16px">
-    <strong>Módulo de Autorización:</strong> Revise y autorice o rechace las solicitudes de traspaso pendientes.
+    <strong>Módulo de Autorización:</strong> Revise, autorice o rechace las solicitudes de traspaso pendientes.
   </div>`;
 
   if (user.rol === 'residente') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
-    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Firma 1 - Residente)', false);
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Residente)', false);
   } else if (user.rol === 'control_obra') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
-    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Firma 2 - Control de Obra)', true);
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Autorizo - Control de Obra)', true);
   } else if (user.rol === 'administrador') {
     const pendientesRes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
     const pendientesCO = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
-    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (Firma 1)', false);
-    html += renderTablaAutorizaciones(pendientesCO, 'Pendientes de Control de Obra (Firma 2)', true);
+    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (VoBo)', false);
+    html += renderTablaAutorizaciones(pendientesCO, 'Pendientes de Control de Obra (Autorizo)', true);
   } else {
     html += `<div class="card"><div class="card-body text-center">No tienes permisos para autorizar solicitudes.</div></div>`;
   }

@@ -62,7 +62,7 @@ function fetchState() {
   });
 }
 
-function fetchTraspasosPaginated({ page = 1, limit = 25, status = '', tipo = '', empresa = '', cc = '', insumo = '' } = {}) {
+function fetchTraspasosPaginated({ page = 1, limit = 25, status = '', tipo = '', empresa = '', empresa_rol = '', cc = '', insumo = '', q = '' } = {}) {
   const token = sessionStorage.getItem('gu_token');
   const headers = { 'Authorization': 'Bearer ' + token };
   
@@ -72,8 +72,10 @@ function fetchTraspasosPaginated({ page = 1, limit = 25, status = '', tipo = '',
     status,
     tipo,
     empresa,
+    empresa_rol,
     cc,
-    insumo
+    insumo,
+    q
   });
   
   for (const [key, value] of [...params.entries()]) {

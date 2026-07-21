@@ -12,7 +12,7 @@ function renderRecepcion() {
     <strong>Módulo de Recepción:</strong> Confirme la recepción del material en el centro de costo destino.
   </div>
   <div class="card">
-    <div class="card-header"><h3>Traspasos Autorizados – Pendientes de Recepción (${autorizados.length})</h3></div>
+    <div class="card-header"><h3>Pendientes de Recepción (${autorizados.length})</h3></div>
     <div class="table-wrap">
       ${autorizados.length === 0
         ? '<div class="empty-state"><p>Sin traspasos por recibir</p><span>No hay material en tránsito actualmente</span></div>'

@@ -13,7 +13,7 @@ function renderHistorialProceso() {
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Almacén General · CC 999</h2>
+          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Almacén General</h2>
           <p style="font-size:12px;color:#888">Registro detallado de cada insumo movido desde o hacia Saldos Iniciales.</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
