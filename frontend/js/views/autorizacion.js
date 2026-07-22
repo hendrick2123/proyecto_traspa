@@ -59,7 +59,7 @@ function renderAutorizacion() {
     html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Cordinador)', 'cordinador');
   } else if (user.rol === 'residente') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
-    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Residente)', 'residente');
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Liberación - Residente)', 'residente');
   } else if (user.rol === 'control_obra') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
     html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Autorizo - Control de Obra)', 'control_obra');
@@ -68,7 +68,7 @@ function renderAutorizacion() {
     const pendientesRes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
     const pendientesCO = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
     html += renderTablaAutorizaciones(pendientesCord, 'Pendientes de Cordinador (VoBo)', 'cordinador');
-    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (VoBo)', 'residente');
+    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (Liberación)', 'residente');
     html += renderTablaAutorizaciones(pendientesCO, 'Pendientes de Control de Obra (Autorizo)', 'control_obra');
   } else {
     html += `<div class="card"><div class="card-body text-center">No tienes permisos para autorizar solicitudes.</div></div>`;
@@ -175,7 +175,7 @@ function doAutorizar(id) {
     t.fechaAutorizacionCordinador = now();
     t.comentarioAuthCordinador = comment;
     successTitle = 'Traspaso Aprobado por Cordinador';
-    successDesc = 'El traspaso pasa al Residente para su VoBo.';
+    successDesc = 'El traspaso pasa al Residente para su Liberación.';
   } else if (t.status === 'pendiente') {
     t.status = 'pre_autorizado';
     t.autorizador = nombre;

@@ -504,15 +504,14 @@ def get_max_folio_number(prefix: str, conn=None):
             close_conn = True
         cur = conn.cursor()
         cur.execute("""
-            SELECT folio FROM testing.solicitudes_traspasos_v2
-            WHERE folio LIKE %s
-            ORDER BY id_solicitud DESC LIMIT 1;
+            SELECT MAX(CAST(SPLIT_PART(folio, '-', 4) AS INTEGER))
+            FROM testing.solicitudes_traspasos_v2
+            WHERE folio LIKE %s;
         """, (f"TRP-{prefix}-%",))
         row = cur.fetchone(); cur.close()
         if close_conn: conn.close()
-        if row:
-            parts = row[0].split("-")
-            if len(parts) == 4: return int(parts[3])
+        if row and row[0] is not None:
+            return int(row[0])
         return 0
     except Exception as e:
         print(f"DB Warning get_max_folio: {e}", file=sys.stderr, flush=True)

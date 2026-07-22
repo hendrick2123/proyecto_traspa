@@ -637,7 +637,7 @@ def save_db_traspaso(t, conn=None):
         return None
 
 def get_max_folio_number(prefix, conn=None):
-    """Obtiene el número máximo de folio para un prefijo (PRS o TOB) desde Postgres."""
+    """Obtiene el número máximo de folio numérico para un prefijo (PRS, TOB, DEV, GAR) desde Postgres."""
     close_conn = False
     try:
         if conn is None:
@@ -645,19 +645,16 @@ def get_max_folio_number(prefix, conn=None):
             close_conn = True
         cur = conn.cursor()
         cur.execute("""
-            SELECT folio FROM testing.solicitudes_traspasos_v2
-            WHERE folio LIKE %s
-            ORDER BY id_solicitud DESC LIMIT 1;
+            SELECT MAX(CAST(SPLIT_PART(folio, '-', 4) AS INTEGER))
+            FROM testing.solicitudes_traspasos_v2
+            WHERE folio LIKE %s;
         """, (f"TRP-{prefix}-%",))
         row = cur.fetchone()
         cur.close()
         if close_conn:
             conn.close()
-        if row:
-            # Folio format: TRP-PRS-2026-0003 → extract 0003
-            parts = row[0].split('-')
-            if len(parts) == 4:
-                return int(parts[3])
+        if row and row[0] is not None:
+            return int(row[0])
         return 0
     except Exception as e:
         print(f"DB Warning get_max_folio: {e}", file=sys.stderr, flush=True)
@@ -892,7 +889,9 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
             # Calcular folios basados en los registros existentes en DB
             folio_prs = get_max_folio_number("PRS", conn=pg_conn)
             folio_tob = get_max_folio_number("TOB", conn=pg_conn)
-            folios = {"PRS": folio_prs, "TOB": folio_tob}
+            folio_dev = get_max_folio_number("DEV", conn=pg_conn)
+            folio_gar = get_max_folio_number("GAR", conn=pg_conn)
+            folios = {"PRS": folio_prs, "TOB": folio_tob, "DEV": folio_dev, "GAR": folio_gar}
 
             if pg_conn:
                 try:
