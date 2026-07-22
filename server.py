@@ -245,11 +245,13 @@ def init_usuarios_table():
                 correo     TEXT NOT NULL UNIQUE,
                 username   TEXT NOT NULL UNIQUE,
                 password   TEXT NOT NULL,
-                rol        TEXT NOT NULL CHECK (rol IN ('almacenista','control_obra','residente','administrador')),
+                rol        TEXT NOT NULL,
                 activo     BOOLEAN DEFAULT TRUE,
                 creado_en  TIMESTAMP DEFAULT NOW()
             );
         """)
+        # Migración: eliminar check constraint si existe
+        cur.execute("ALTER TABLE testing.prof_usuarios DROP CONSTRAINT IF EXISTS prof_usuarios_rol_check;")
         # Migración: agregar empresa_id si no existe
         cur.execute("""
             ALTER TABLE testing.prof_usuarios

@@ -526,10 +526,11 @@ def init_db():
             CREATE TABLE IF NOT EXISTS testing.prof_usuarios (
                 id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, correo TEXT NOT NULL UNIQUE,
                 username TEXT NOT NULL UNIQUE, password TEXT NOT NULL,
-                rol TEXT NOT NULL CHECK (rol IN ('almacenista','control_obra','residente','administrador')),
+                rol TEXT NOT NULL,
                 activo BOOLEAN DEFAULT TRUE, creado_en TIMESTAMP DEFAULT NOW()
             );
         """)
+        cur.execute("ALTER TABLE testing.prof_usuarios DROP CONSTRAINT IF EXISTS prof_usuarios_rol_check;")
         cur.execute("ALTER TABLE testing.prof_usuarios ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT NULL;")
         cur.execute("ALTER TABLE testing.prof_usuarios ADD COLUMN IF NOT EXISTS cc_ids TEXT DEFAULT NULL;")
         cur.execute("SELECT COUNT(*) FROM testing.prof_usuarios;")
