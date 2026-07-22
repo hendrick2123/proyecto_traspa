@@ -917,7 +917,7 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
 
             # ── Filtrar traspasos según rol y cc_ids del usuario ──
             user_rol = user.get('rol', '')
-            if user_rol not in ('administrador', 'residente'):
+            if user_rol not in ('administrador', 'residente', 'cordinador'):
                 user_cc_ids = [c.strip() for c in (user.get('cc_ids') or '').split(',') if c.strip()]
                 user_empresa_ids = [e.strip() for e in (user.get('empresa_id') or '').split(',') if e.strip()]
                 if user_cc_ids:
@@ -1047,7 +1047,7 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
                 password   = body.get('password', '')
                 empresa_id = body.get('empresa_id', None)  # puede ser None para admin
                 cc_ids     = body.get('cc_ids', None)       # centros de costo asignados (comma-separated)
-                roles_validos = {'almacenista', 'control_obra', 'residente', 'administrador'}
+                roles_validos = {'almacenista', 'control_obra', 'residente', 'administrador', 'cordinador'}
 
                 if not all([nombre, username, correo, rol, password]):
                     self._json(400, {"error": "Todos los campos son obligatorios."}); return
@@ -1055,9 +1055,9 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
                     self._json(400, {"error": "Rol inválido."}); return
                 if len(password) < 6:
                     self._json(400, {"error": "La contraseña debe tener al menos 6 caracteres."}); return
-                if rol not in ('administrador', 'residente') and not empresa_id:
+                if rol not in ('administrador', 'residente', 'cordinador') and not empresa_id:
                     self._json(400, {"error": "Debes seleccionar la empresa a la que perteneces."}); return
-                if rol not in ('administrador', 'residente') and not cc_ids:
+                if rol not in ('administrador', 'residente', 'cordinador') and not cc_ids:
                     self._json(400, {"error": "Debes seleccionar al menos un centro de costo."}); return
 
                 conn = get_db_connection(); cur = conn.cursor()

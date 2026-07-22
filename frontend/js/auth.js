@@ -44,19 +44,19 @@ function hasRole(roles) {
   return roles.includes(user.rol);
 }
 
-// Returns the empresa_id of the current user, or null if admin/residente (sees everything)
+// Returns the empresa_id of the current user, or null if admin/residente/cordinador (sees everything)
 function getUserEmpresaId() {
   const user = getUser();
   if (!user) return null;
-  if (user.rol === 'administrador' || user.rol === 'residente') return null; // admin/residente sees all
+  if (user.rol === 'administrador' || user.rol === 'residente' || user.rol === 'cordinador') return null; // admin/residente/cordinador sees all
   return user.empresa_id || null;
 }
 
-// Returns the cc_ids of the current user as an array, or null if admin/residente
+// Returns the cc_ids of the current user as an array, or null if admin/residente/cordinador
 function getUserCcIds() {
   const user = getUser();
   if (!user) return null;
-  if (user.rol === 'administrador' || user.rol === 'residente') return null; // admin/residente sees all
+  if (user.rol === 'administrador' || user.rol === 'residente' || user.rol === 'cordinador') return null; // admin/residente/cordinador sees all
   if (!user.cc_ids) return [];
   return String(user.cc_ids).split(',').map(c => c.trim()).filter(Boolean);
 }

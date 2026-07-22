@@ -299,7 +299,7 @@ def get_db_traspasos_paginated(
     where_clauses = []
     params = []
     
-    if user and user.get("rol", "") not in ("administrador", "residente"):
+    if user and user.get("rol", "") not in ("administrador", "residente", "cordinador"):
         user_cc_ids = [c.strip() for c in (user.get("cc_ids") or "").split(",") if c.strip()]
         user_empresa_ids = [e.strip() for e in (user.get("empresa_id") or "").split(",") if e.strip()]
         if user_cc_ids:
@@ -930,7 +930,7 @@ def api_get_state(user: dict = Depends(get_current_user)):
 
     # Filtrar traspasos por rol / cc_ids
     user_rol = user.get("rol","")
-    if user_rol not in ("administrador","residente"):
+    if user_rol not in ("administrador","residente","cordinador"):
         user_cc_ids      = [c.strip() for c in (user.get("cc_ids") or "").split(",") if c.strip()]
         user_empresa_ids = [e.strip() for e in (user.get("empresa_id") or "").split(",") if e.strip()]
         if user_cc_ids:
@@ -1089,16 +1089,16 @@ async def api_register(request: Request, user: dict = Depends(get_current_user))
     password   = body.get("password","")
     empresa_id = body.get("empresa_id", None)
     cc_ids     = body.get("cc_ids", None)
-    roles_validos = {"almacenista","control_obra","residente","administrador"}
+    roles_validos = {"almacenista","control_obra","residente","administrador","cordinador"}
     if not all([nombre, username, correo, rol, password]):
         raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
     if rol not in roles_validos:
         raise HTTPException(status_code=400, detail="Rol inválido.")
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres.")
-    if rol not in ("administrador","residente") and not empresa_id:
+    if rol not in ("administrador","residente","cordinador") and not empresa_id:
         raise HTTPException(status_code=400, detail="Debes seleccionar la empresa a la que perteneces.")
-    if rol not in ("administrador","residente") and not cc_ids:
+    if rol not in ("administrador","residente","cordinador") and not cc_ids:
         raise HTTPException(status_code=400, detail="Debes seleccionar al menos un centro de costo.")
     try:
         conn = get_db_connection(); cur = conn.cursor()

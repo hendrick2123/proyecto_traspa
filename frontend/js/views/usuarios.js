@@ -200,7 +200,7 @@ function onEditRolChange() {
   const rol = document.getElementById('edit-rol').value;
   const grp = document.getElementById('edit-empresa-group');
   if (grp) {
-    grp.style.display = (rol === 'administrador' || rol === 'residente') ? 'none' : 'block';
+    grp.style.display = (rol === 'administrador' || rol === 'residente' || rol === 'cordinador') ? 'none' : 'block';
   }
 }
 
@@ -217,7 +217,7 @@ async function saveUsuario(id) {
 
   let empresa_id = null;
   let cc_ids = null;
-  if (rol !== 'administrador' && rol !== 'residente') {
+  if (rol !== 'administrador' && rol !== 'residente' && rol !== 'cordinador') {
     const checked = document.querySelectorAll('.edit-cc-chk:checked');
     cc_ids = Array.from(checked).map(cb => cb.value).join(',');
     

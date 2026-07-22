@@ -574,7 +574,7 @@
         errEl.textContent = 'Todos los campos son obligatorios.';
         errEl.style.display = 'block'; return;
       }
-      if (rol !== 'administrador' && rol !== 'residente' && (!empresa_id || !cc_ids)) {
+      if (rol !== 'administrador' && rol !== 'residente' && rol !== 'cordinador' && (!empresa_id || !cc_ids)) {
         errEl.textContent = 'Debes seleccionar al menos un centro de costo.';
         errEl.style.display = 'block'; return;
       }
