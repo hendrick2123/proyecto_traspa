@@ -58,6 +58,11 @@ function fetchState() {
           localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
         } catch (e) {}
         return S;
+      })
+      .catch(fallbackErr => {
+        console.warn('Backend no disponible, cargando estado local:', fallbackErr);
+        S = loadState();
+        return S;
       });
   });
 }
@@ -260,7 +265,7 @@ function tipoBadge(tipo) {
 }
 
 function statusBadge(s) {
-  const map    = { pendiente:'badge-pending', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft', devuelto_parcial:'badge-partial', devuelto_total:'badge-returned' };
-  const labels = { pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
+  const map    = { pendiente_cordinador:'badge-pending', pendiente:'badge-pending', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft', devuelto_parcial:'badge-partial', devuelto_total:'badge-returned' };
+  const labels = { pendiente_cordinador:'Pend. Cordinador', pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
   return `<span class="badge ${map[s] || ''}">${labels[s] || s}</span>`;
 }

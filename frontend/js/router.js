@@ -51,12 +51,14 @@ function updateBadges() {
   const user = getUser();
   let pendAuth = 0;
   if (user) {
-    if (user.rol === 'residente') {
+    if (user.rol === 'cordinador') {
+      pendAuth = S.traspasos.filter(t => t.status === 'pendiente_cordinador').length;
+    } else if (user.rol === 'residente') {
       pendAuth = S.traspasos.filter(t => t.status === 'pendiente').length;
     } else if (user.rol === 'control_obra') {
       pendAuth = S.traspasos.filter(t => t.status === 'pre_autorizado').length;
     } else if (user.rol === 'administrador') {
-      pendAuth = S.traspasos.filter(t => t.status === 'pendiente' || t.status === 'pre_autorizado').length;
+      pendAuth = S.traspasos.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
     }
   }
   const pendRec  = S.traspasos.filter(t => t.status === 'autorizado').length;
@@ -76,17 +78,28 @@ document.querySelectorAll('.nav-link').forEach(a => {
 });
 
 // Boot
+function getInitialView() {
+  const user = getUser();
+  if (user && ROL_VIEWS[user.rol]) {
+    const allowed = ROL_VIEWS[user.rol];
+    if (!allowed.includes('dashboard') && allowed.length > 0) {
+      return allowed[0];
+    }
+  }
+  return 'dashboard';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof fetchState === 'function') {
     fetchState()
       .then(() => {
-        navigate('dashboard');
+        navigate(getInitialView());
       })
       .catch(err => {
         console.error('Error al iniciar la aplicación desde el backend, usando valores locales:', err);
-        navigate('dashboard');
+        navigate(getInitialView());
       });
   } else {
-    navigate('dashboard');
+    navigate(getInitialView());
   }
 });

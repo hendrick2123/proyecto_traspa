@@ -357,6 +357,7 @@
             <option value="almacenista">🏗️ Monitor de control</option>
             <option value="control_obra">📋 Control de Obra</option>
             <option value="residente">🏠 Residente</option>
+            <option value="cordinador">Cordinador</option>
             <option value="administrador">🔑 Administrador</option>
           </select>
         </div>
@@ -430,6 +431,10 @@
         label: 'Monitor de control',
         desc: 'Puede crear nuevas solicitudes de traspaso de recursos y consultar el historial de movimientos.'
       },
+      cordinador: {
+        label: 'Cordinador',
+        desc: 'Primer nivel de autorización. Revisa y aprueba las solicitudes antes de pasar al Residente.'
+      },
       control_obra: {
         label: 'Control de Obra',
         desc: 'Puede autorizar o rechazar las solicitudes de traspaso pendientes y consultar el historial.'
@@ -457,7 +462,7 @@
       infoEl.innerHTML = `<strong>${info.label}</strong>${info.desc}`;
       infoEl.classList.add('visible');
       // Show empresa field for operational roles
-      empGrp.style.display = (rol === 'administrador' || rol === 'residente') ? 'none' : 'block';
+      empGrp.style.display = (rol === 'administrador' || rol === 'residente' || rol === 'cordinador') ? 'none' : 'block';
     }
 
     async function fetchEmpresas() {

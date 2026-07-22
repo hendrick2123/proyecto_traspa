@@ -14,7 +14,6 @@ function renderHistorialProceso() {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Almacén General</h2>
-          <p style="font-size:12px;color:#888">Registro detallado de cada insumo movido desde o hacia Saldos Iniciales.</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="hp-buscar" placeholder="Buscar por clave, nombre o comentario..." 
@@ -125,7 +124,7 @@ function cargarHistorialProceso() {
         <tbody id="hp-tbody">
           ${rows.map((r, idx) => {
             const indexOnPage = (hpPage - 1) * hpLimit + idx + 1;
-            const fechaFmt = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+            const fechaFmt = r.fecha ? fmtDate(r.fecha) : '—';
             const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
                             : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
                             : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'

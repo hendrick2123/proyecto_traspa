@@ -9,15 +9,17 @@ function renderDashboard() {
   const user = getUser();
   let pend = 0;
   if (user) {
-    if (user.rol === 'residente') {
+    if (user.rol === 'cordinador') {
+      pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador').length;
+    } else if (user.rol === 'residente') {
       pend = traspaFiltrados.filter(t => t.status === 'pendiente').length;
     } else if (user.rol === 'control_obra') {
       pend = traspaFiltrados.filter(t => t.status === 'pre_autorizado').length;
     } else {
-      pend = traspaFiltrados.filter(t => t.status === 'pendiente' || t.status === 'pre_autorizado').length;
+      pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
     }
   } else {
-    pend = traspaFiltrados.filter(t => t.status === 'pendiente' || t.status === 'pre_autorizado').length;
+    pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
   }
 
   const auth       = traspaFiltrados.filter(t => t.status === 'autorizado').length;
@@ -88,8 +90,7 @@ function renderDashboard() {
     <div class="card">
       <div class="card-header" style="border-bottom:2px solid rgba(34,197,94,.2)">
         <h3 style="display:flex;align-items:center;gap:8px">
-          <span style="width:28px;height:28px;background:rgba(34,197,94,.12);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px">📤</span>
-          Quién Saca Más Material
+          Quién traspasa más materiales
         </h3>
       </div>
       <div class="card-body" style="padding:12px 16px">
@@ -100,7 +101,6 @@ function renderDashboard() {
               <span style="min-width:22px;height:22px;background:${i===0?'#f59e0b':i===1?'#94a3b8':'#cbd5e1'};color:#fff;border-radius:50%;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">${i+1}</span>
               <span style="flex:1;font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${s.nombre}">${s.nombre}</span>
               <span style="font-size:11px;color:#64748b;min-width:60px;text-align:right">${s.traspasos} traspasos</span>
-              <span style="font-size:11px;font-weight:700;color:#16a34a;min-width:70px;text-align:right">${s.unidades} uds</span>
             </div>`).join('')
         }
       </div>

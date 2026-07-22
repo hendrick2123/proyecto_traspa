@@ -2,7 +2,7 @@
 // VIEW – Autorización
 // =====================================================
 
-function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
+function renderTablaAutorizaciones(pendientes, titulo, firmaLevel) {
   return `
   <div class="card" style="margin-bottom: 24px">
     <div class="card-header"><h3>${titulo} (${pendientes.length})</h3></div>
@@ -10,7 +10,7 @@ function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
       ${pendientes.length === 0
         ? '<div class="empty-state"><p>Sin solicitudes pendientes</p><span>Todas las solicitudes han sido procesadas</span></div>'
         : `<table>
-            <thead><tr><th>Folio</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Insumos</th><th>Solicitante</th><th>Fecha Sol.</th>${esFirmaDos ? '<th style="display:none">VoBo (Residente)</th>' : ''}<th>Acciones</th></tr></thead>
+            <thead><tr><th>Folio</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Insumos</th><th>Solicitante</th><th>Fecha Sol.</th><th>Acciones</th></tr></thead>
             <tbody>
               ${pendientes.map(t => `
               <tr>
@@ -30,7 +30,6 @@ function renderTablaAutorizaciones(pendientes, titulo, esFirmaDos) {
                 <td class="text-sm">${t.items.length} insumo(s)</td>
                 <td class="text-sm">${t.solicitante}</td>
                 <td class="text-sm">${fmtDate(t.fechaSolicitud)}</td>
-                ${esFirmaDos ? `<td style="display:none" class="text-sm"><span style="font-weight:600">${t.autorizador || '—'}</span><div style="color:#888;font-size:10px">${fmtDate(t.fechaAutorizacion)}</div></td>` : ''}
                 <td>
                   <div style="display:flex;gap:6px">
                     <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
@@ -55,17 +54,22 @@ function renderAutorizacion() {
     <strong>Módulo de Autorización:</strong> Revise, autorice o rechace las solicitudes de traspaso pendientes.
   </div>`;
 
-  if (user.rol === 'residente') {
+  if (user.rol === 'cordinador') {
+    const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente_cordinador'));
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Cordinador)', 'cordinador');
+  } else if (user.rol === 'residente') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
-    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Residente)', false);
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (VoBo - Residente)', 'residente');
   } else if (user.rol === 'control_obra') {
     const pendientes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
-    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Autorizo - Control de Obra)', true);
+    html += renderTablaAutorizaciones(pendientes, 'Solicitudes Pendientes (Autorizo - Control de Obra)', 'control_obra');
   } else if (user.rol === 'administrador') {
+    const pendientesCord = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente_cordinador'));
     const pendientesRes = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pendiente'));
     const pendientesCO = filtrarPorEmpresa(S.traspasos.filter(t => t.status === 'pre_autorizado'));
-    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (VoBo)', false);
-    html += renderTablaAutorizaciones(pendientesCO, 'Pendientes de Control de Obra (Autorizo)', true);
+    html += renderTablaAutorizaciones(pendientesCord, 'Pendientes de Cordinador (VoBo)', 'cordinador');
+    html += renderTablaAutorizaciones(pendientesRes, 'Pendientes de Residente (VoBo)', 'residente');
+    html += renderTablaAutorizaciones(pendientesCO, 'Pendientes de Control de Obra (Autorizo)', 'control_obra');
   } else {
     html += `<div class="card"><div class="card-body text-center">No tienes permisos para autorizar solicitudes.</div></div>`;
   }
@@ -77,9 +81,19 @@ function modalAutorizar(id) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
-  const esFirmaDos = t.status === 'pre_autorizado';
-  const roleRequired = esFirmaDos ? 'control_obra' : 'residente';
-  const roleLabel = esFirmaDos ? 'Control de Obra' : 'Residente';
+  let roleRequired, roleLabel;
+  if (t.status === 'pendiente_cordinador') {
+    roleRequired = 'cordinador';
+    roleLabel = 'Cordinador';
+  } else if (t.status === 'pendiente') {
+    roleRequired = 'residente';
+    roleLabel = 'Residente';
+  } else if (t.status === 'pre_autorizado') {
+    roleRequired = 'control_obra';
+    roleLabel = 'Control de Obra';
+  } else {
+    return;
+  }
 
   openModal(
     `Autorizar Traspaso ${t.folio} (${roleLabel})`,
@@ -93,7 +107,7 @@ function modalAutorizar(id) {
        <textarea id="auth-comment" placeholder="Observaciones de la autorización..."></textarea>
      </div>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-primary"   onclick="doAutorizar('${id}', ${esFirmaDos})">Confirmar Autorización</button>`
+     <button class="btn btn-primary"   onclick="doAutorizar('${id}')">Confirmar Autorización</button>`
   );
 
   fetch(API_BASE + '/api/users')
@@ -102,13 +116,24 @@ function modalAutorizar(id) {
       const select = document.getElementById('auth-nombre');
       if (!select) return;
       if (data.users) {
-        const autores = data.users.filter(u => u.rol === roleRequired && u.activo);
+        let autores;
+        if (roleRequired === 'cordinador') {
+          autores = data.users.filter(u => u.rol === 'cordinador' && u.activo);
+        } else {
+          autores = data.users.filter(u => u.rol === roleRequired && u.activo);
+        }
+        // Admin can also authorize
+        const currentUser = getUser();
+        if (currentUser && currentUser.rol === 'administrador') {
+          if (!autores.find(u => u.nombre === currentUser.nombre)) {
+            autores.push({ nombre: currentUser.nombre });
+          }
+        }
         if (autores.length > 0) {
           select.innerHTML = '<option value="">-- Seleccionar autorizador --</option>' + 
             autores.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
           
-          const currentUser = getUser();
-          if (currentUser && currentUser.rol === roleRequired) {
+          if (currentUser && (currentUser.rol === roleRequired || currentUser.rol === 'administrador')) {
             const matched = autores.find(u => u.nombre === currentUser.nombre);
             if (matched) select.value = matched.nombre;
           }
@@ -119,31 +144,54 @@ function modalAutorizar(id) {
     });
 }
 
-function doAutorizar(id, esFirmaDos) {
+function doAutorizar(id) {
   const nombre = document.getElementById('auth-nombre').value.trim();
   if (!nombre) return alert('Ingrese el nombre del autorizador');
 
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
-  const originalStatus = t.status;
-  const originalAuth = t.autorizador;
-  const originalFecha = t.fechaAutorizacion;
-  const originalComm = t.comentarioAuth;
-  const originalAuth2 = t.autorizador2;
-  const originalFecha2 = t.fechaAutorizacion2;
-  const originalComm2 = t.comentarioAuth2;
+  // Save originals for rollback
+  const originals = {
+    status: t.status,
+    autorizadorCordinador: t.autorizadorCordinador,
+    fechaAutorizacionCordinador: t.fechaAutorizacionCordinador,
+    comentarioAuthCordinador: t.comentarioAuthCordinador,
+    autorizador: t.autorizador,
+    fechaAutorizacion: t.fechaAutorizacion,
+    comentarioAuth: t.comentarioAuth,
+    autorizador2: t.autorizador2,
+    fechaAutorizacion2: t.fechaAutorizacion2,
+    comentarioAuth2: t.comentarioAuth2
+  };
 
-  if (esFirmaDos) {
-    t.status            = 'autorizado';
-    t.autorizador2      = nombre;
-    t.fechaAutorizacion2= now();
-    t.comentarioAuth2   = document.getElementById('auth-comment').value.trim();
-  } else {
-    t.status            = 'pre_autorizado';
-    t.autorizador       = nombre;
+  const comment = document.getElementById('auth-comment').value.trim();
+
+  let successTitle, successDesc;
+
+  if (t.status === 'pendiente_cordinador') {
+    t.status = 'pendiente';
+    t.autorizadorCordinador = nombre;
+    t.fechaAutorizacionCordinador = now();
+    t.comentarioAuthCordinador = comment;
+    successTitle = 'Traspaso Aprobado por Cordinador';
+    successDesc = 'El traspaso pasa al Residente para su VoBo.';
+  } else if (t.status === 'pendiente') {
+    t.status = 'pre_autorizado';
+    t.autorizador = nombre;
     t.fechaAutorizacion = now();
-    t.comentarioAuth    = document.getElementById('auth-comment').value.trim();
+    t.comentarioAuth = comment;
+    successTitle = 'Traspaso Pre-Autorizado';
+    successDesc = 'El traspaso ha sido pre-autorizado. Falta la firma de Control de Obra.';
+  } else if (t.status === 'pre_autorizado') {
+    t.status = 'autorizado';
+    t.autorizador2 = nombre;
+    t.fechaAutorizacion2 = now();
+    t.comentarioAuth2 = comment;
+    successTitle = 'Traspaso Autorizado Completamente';
+    successDesc = 'El traspaso está listo para su recepción en destino.';
+  } else {
+    return;
   }
 
   const btnSubmit = document.querySelector('.modal-footer .btn-primary');
@@ -155,10 +203,6 @@ function doAutorizar(id, esFirmaDos) {
   saveState('traspasos')
     .then(() => {
       closeModal();
-      const successTitle = esFirmaDos ? 'Traspaso Autorizado Completamente' : 'Traspaso Pre-Autorizado';
-      const successDesc = esFirmaDos 
-        ? 'El traspaso está listo para su recepción en destino.' 
-        : 'El traspaso ha sido pre-autorizado. Falta la firma de Control de Obra.';
 
       openModal(
         successTitle,
@@ -167,20 +211,23 @@ function doAutorizar(id, esFirmaDos) {
            <div style="font-size:22px;font-weight:900;color:var(--green);margin-bottom:16px">${t.folio}</div>
            <p style="color:#555;font-size:13px">${successDesc}</p>
          </div>`,
-        `${esFirmaDos ? `<button class="btn btn-primary" onclick="closeModal();imprimirTraspaso('${id}')">Imprimir Autorización</button>` : ''}
+        `${t.status === 'autorizado' ? `<button class="btn btn-primary" onclick="closeModal();imprimirTraspaso('${id}')">Imprimir Autorización</button>` : ''}
          <button class="btn btn-secondary" onclick="closeModal();renderAutorizacion()">Continuar</button>`
       );
       updateBadges();
     })
     .catch(err => {
       // Revert state
-      t.status = originalStatus;
-      t.autorizador = originalAuth;
-      t.fechaAutorizacion = originalFecha;
-      t.comentarioAuth = originalComm;
-      t.autorizador2 = originalAuth2;
-      t.fechaAutorizacion2 = originalFecha2;
-      t.comentarioAuth2 = originalComm2;
+      t.status = originals.status;
+      t.autorizadorCordinador = originals.autorizadorCordinador;
+      t.fechaAutorizacionCordinador = originals.fechaAutorizacionCordinador;
+      t.comentarioAuthCordinador = originals.comentarioAuthCordinador;
+      t.autorizador = originals.autorizador;
+      t.fechaAutorizacion = originals.fechaAutorizacion;
+      t.comentarioAuth = originals.comentarioAuth;
+      t.autorizador2 = originals.autorizador2;
+      t.fechaAutorizacion2 = originals.fechaAutorizacion2;
+      t.comentarioAuth2 = originals.comentarioAuth2;
 
       if (btnSubmit) {
         btnSubmit.disabled = false;
@@ -194,9 +241,19 @@ function modalRechazar(id) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
-  const esFirmaDos = t.status === 'pre_autorizado';
-  const roleRequired = esFirmaDos ? 'control_obra' : 'residente';
-  const roleLabel = esFirmaDos ? 'Control de Obra' : 'Residente';
+  let roleRequired, roleLabel;
+  if (t.status === 'pendiente_cordinador') {
+    roleRequired = 'cordinador';
+    roleLabel = 'Cordinador';
+  } else if (t.status === 'pendiente') {
+    roleRequired = 'residente';
+    roleLabel = 'Residente';
+  } else if (t.status === 'pre_autorizado') {
+    roleRequired = 'control_obra';
+    roleLabel = 'Control de Obra';
+  } else {
+    return;
+  }
 
   openModal(
     `Rechazar Traspaso ${t.folio}`,
@@ -219,13 +276,23 @@ function modalRechazar(id) {
       const select = document.getElementById('rec-nombre');
       if (!select) return;
       if (data.users) {
-        const autores = data.users.filter(u => u.rol === roleRequired && u.activo);
+        let autores;
+        if (roleRequired === 'cordinador') {
+          autores = data.users.filter(u => u.rol === 'cordinador' && u.activo);
+        } else {
+          autores = data.users.filter(u => u.rol === roleRequired && u.activo);
+        }
+        const currentUser = getUser();
+        if (currentUser && currentUser.rol === 'administrador') {
+          if (!autores.find(u => u.nombre === currentUser.nombre)) {
+            autores.push({ nombre: currentUser.nombre });
+          }
+        }
         if (autores.length > 0) {
           select.innerHTML = '<option value="">-- Seleccionar autorizador --</option>' + 
             autores.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
           
-          const currentUser = getUser();
-          if (currentUser && currentUser.rol === roleRequired) {
+          if (currentUser && (currentUser.rol === roleRequired || currentUser.rol === 'administrador')) {
             const matched = autores.find(u => u.nombre === currentUser.nombre);
             if (matched) select.value = matched.nombre;
           }
@@ -245,24 +312,34 @@ function doRechazar(id) {
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
-  const originalStatus = t.status;
-  const originalAuth = t.autorizador;
-  const originalFecha = t.fechaAutorizacion;
-  const originalComm = t.comentarioAuth;
-  const originalAuth2 = t.autorizador2;
-  const originalFecha2 = t.fechaAutorizacion2;
-  const originalComm2 = t.comentarioAuth2;
+  const originals = {
+    status: t.status,
+    autorizadorCordinador: t.autorizadorCordinador,
+    fechaAutorizacionCordinador: t.fechaAutorizacionCordinador,
+    comentarioAuthCordinador: t.comentarioAuthCordinador,
+    autorizador: t.autorizador,
+    fechaAutorizacion: t.fechaAutorizacion,
+    comentarioAuth: t.comentarioAuth,
+    autorizador2: t.autorizador2,
+    fechaAutorizacion2: t.fechaAutorizacion2,
+    comentarioAuth2: t.comentarioAuth2
+  };
 
-  if (t.status === 'pre_autorizado') {
-    t.status            = 'rechazado';
-    t.autorizador2      = nombre;
-    t.fechaAutorizacion2= now();
-    t.comentarioAuth2   = motivo;
+  if (t.status === 'pendiente_cordinador') {
+    t.status = 'rechazado';
+    t.autorizadorCordinador = nombre;
+    t.fechaAutorizacionCordinador = now();
+    t.comentarioAuthCordinador = motivo;
+  } else if (t.status === 'pre_autorizado') {
+    t.status = 'rechazado';
+    t.autorizador2 = nombre;
+    t.fechaAutorizacion2 = now();
+    t.comentarioAuth2 = motivo;
   } else {
-    t.status            = 'rechazado';
-    t.autorizador       = nombre;
+    t.status = 'rechazado';
+    t.autorizador = nombre;
     t.fechaAutorizacion = now();
-    t.comentarioAuth    = motivo;
+    t.comentarioAuth = motivo;
   }
 
   const btnSubmit = document.querySelector('.modal-footer .btn-danger');
@@ -279,13 +356,16 @@ function doRechazar(id) {
     })
     .catch(err => {
       // Revert state
-      t.status = originalStatus;
-      t.autorizador = originalAuth;
-      t.fechaAutorizacion = originalFecha;
-      t.comentarioAuth = originalComm;
-      t.autorizador2 = originalAuth2;
-      t.fechaAutorizacion2 = originalFecha2;
-      t.comentarioAuth2 = originalComm2;
+      t.status = originals.status;
+      t.autorizadorCordinador = originals.autorizadorCordinador;
+      t.fechaAutorizacionCordinador = originals.fechaAutorizacionCordinador;
+      t.comentarioAuthCordinador = originals.comentarioAuthCordinador;
+      t.autorizador = originals.autorizador;
+      t.fechaAutorizacion = originals.fechaAutorizacion;
+      t.comentarioAuth = originals.comentarioAuth;
+      t.autorizador2 = originals.autorizador2;
+      t.fechaAutorizacion2 = originals.fechaAutorizacion2;
+      t.comentarioAuth2 = originals.comentarioAuth2;
 
       if (btnSubmit) {
         btnSubmit.disabled = false;
@@ -294,4 +374,3 @@ function doRechazar(id) {
       alert('Error al rechazar: ' + err.message);
     });
 }
-

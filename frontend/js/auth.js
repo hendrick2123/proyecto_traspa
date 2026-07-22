@@ -5,6 +5,7 @@
 // Mapeo de roles a etiquetas legibles
 const ROL_LABELS = {
   almacenista:   'Monitor de control',
+  cordinador:    'Cordinador',
   control_obra:  'Control de Obra',
   residente:     'Residente',
   administrador: 'Administrador'
@@ -13,6 +14,7 @@ const ROL_LABELS = {
 // Vistas permitidas por rol
 const ROL_VIEWS = {
   almacenista:   ['dashboard', 'nueva-solicitud', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
+  cordinador:    ['autorizacion'],
   control_obra:  ['dashboard', 'autorizacion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   residente:     ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   administrador: ['dashboard', 'nueva-solicitud', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion',

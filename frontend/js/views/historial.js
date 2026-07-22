@@ -47,14 +47,6 @@ function renderHistorial() {
     <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
       <h3 id="hist-count">Historial de Movimientos (Cargando...)</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <input type="text" id="hist-buscar" placeholder="🔍 Buscar folio, solicitante, insumo..."
-               oninput="buscarHistorial()"
-               style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;width:260px;font-family:'Montserrat',sans-serif;height:32px">
-        <div style="display:inline-flex;border:1px solid #ccc;border-radius:6px;padding:2px;background:#f1f5f9;gap:2px">
-          <button id="btn-rol-todos" class="btn-rol active" onclick="cambiarEmpresaRol('')" style="border:none;background:var(--green);color:#fff;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Ambos</button>
-          <button id="btn-rol-origen" class="btn-rol" onclick="cambiarEmpresaRol('origen')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Origen</button>
-          <button id="btn-rol-destino" class="btn-rol" onclick="cambiarEmpresaRol('destino')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Destino</button>
-        </div>
         <select id="fil-empresa" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todas las empresas</option>
           ${empresasOpts}
@@ -71,7 +63,8 @@ function renderHistorial() {
         </select>
         <select id="fil-status" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
+          <option value="pendiente_cordinador">Pend. Cordinador</option>
+          <option value="pendiente">Pend. Residente</option>
           <option value="pre_autorizado">Pre-Autorizado</option>
           <option value="autorizado">Autorizado</option>
           <option value="recibido">Recibido</option>
@@ -83,6 +76,14 @@ function renderHistorial() {
           <option value="">Todos los insumos</option>
           ${insumosOpts}
         </select>
+        <input type="text" id="hist-buscar" placeholder="🔍 Buscar folio, solicitante, insumo..."
+               oninput="buscarHistorial()"
+               style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;width:260px;font-family:'Montserrat',sans-serif;height:32px">
+        <div style="display:inline-flex;border:1px solid #ccc;border-radius:6px;padding:2px;background:#f1f5f9;gap:2px">
+          <button id="btn-rol-todos" class="btn-rol active" onclick="cambiarEmpresaRol('')" style="border:none;background:var(--green);color:#fff;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Ambos</button>
+          <button id="btn-rol-origen" class="btn-rol" onclick="cambiarEmpresaRol('origen')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Origen</button>
+          <button id="btn-rol-destino" class="btn-rol" onclick="cambiarEmpresaRol('destino')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Destino</button>
+        </div>
       </div>
     </div>
     <div class="table-wrap" id="hist-table">

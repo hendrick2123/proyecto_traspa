@@ -72,7 +72,7 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
     th{background:#f5f5f5;padding:7px 10px;text-align:left;font-weight:700;border:1px solid #ddd;font-size:10px;text-transform:uppercase}
     td{padding:6px 10px;border:1px solid #ddd}
-    .signs{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:50px}
+    .signs{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:50px}
     .sign-box{text-align:center}
     .sign-line{border-top:1px solid #111;padding-top:6px;margin-bottom:4px}
     .sign-lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#666}
@@ -136,6 +136,16 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
 
   ${!hideAuthAndObs && t.observaciones ? `<div class="section"><h4>Observaciones</h4><p style="font-size:12px">${t.observaciones}</p></div>` : ''}
 
+  ${!hideAuthAndObs && t.autorizadorCordinador ? `
+  <div class="section">
+    <h4>Información de Autorización (Cordinador)</h4>
+    <div class="grid2">
+      <div class="field"><span class="lbl">Cordinador</span><span class="val">${t.autorizadorCordinador}</span></div>
+      <div class="field"><span class="lbl">Fecha de VoBo</span><span class="val">${fmtDate(t.fechaAutorizacionCordinador)}</span></div>
+      ${t.comentarioAuthCordinador ? `<div class="field" style="grid-column:1/-1"><span class="lbl">Comentarios</span><span class="val">${t.comentarioAuthCordinador}</span></div>` : ''}
+    </div>
+  </div>` : ''}
+
   ${!hideAuthAndObs && t.autorizador ? `
   <div class="section">
     <h4>Información de Autorización (Residente)</h4>
@@ -168,6 +178,7 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
 
   <div class="signs">
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Solicitante</div><div class="sign-name">${t.solicitante}</div></div>
+    <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Cordinador</div><div class="sign-name">${t.autorizadorCordinador || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Residente</div><div class="sign-name">${t.autorizador || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Control de Obra</div><div class="sign-name">${t.autorizador2 || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Receptor</div><div class="sign-name">${t.receptor || 'Pendiente de Recibir'}</div></div>

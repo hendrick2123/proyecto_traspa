@@ -58,6 +58,9 @@ function verDetalle(id) {
        <div class="form-group"><label>Empresa Destino</label><div>${getEmpresa(t.empresaDestino).nombre}</div></div>
        <div class="form-group"><label>CC Destino</label><div>${getCC(t.ccDestino).nombre}</div></div>
        <div class="form-group"><label>Fecha Solicitud</label><div>${fmtDate(t.fechaSolicitud)}</div></div>
+       ${t.autorizadorCordinador ? `
+       <div class="form-group"><label>Cordinador</label><div>${t.autorizadorCordinador}</div></div>
+       <div class="form-group"><label>Fecha VoBo Cordinador</label><div>${fmtDate(t.fechaAutorizacionCordinador)}</div></div>` : ''}
        ${t.autorizador ? `
        <div class="form-group"><label>Autorizador 1 (Residente)</label><div>${t.autorizador}</div></div>
        <div class="form-group"><label>Fecha Auth. 1</label><div>${fmtDate(t.fechaAutorizacion)}</div></div>` : ''}
@@ -72,6 +75,11 @@ function verDetalle(id) {
      <div style="margin-bottom:12px">
        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Observaciones</label>
        <div style="margin-top:4px;font-size:13px">${t.observaciones}</div>
+     </div>` : ''}
+     ${t.comentarioAuthCordinador ? `
+     <div style="margin-bottom:12px">
+       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Cordinador</label>
+       <div style="margin-top:4px;font-size:13px">${t.comentarioAuthCordinador}</div>
      </div>` : ''}
      ${t.comentarioAuth ? `
      <div style="margin-bottom:12px">

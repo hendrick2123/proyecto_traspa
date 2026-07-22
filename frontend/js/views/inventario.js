@@ -13,8 +13,7 @@ function renderInventario() {
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Inventario de Préstamos</h2>
-          <p style="font-size:12px;color:#888">Registro detallado de préstamos y garantías por devolver, excluyendo almacén general (CC 99).</p>
+          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Préstamos</h2>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="inv-buscar" placeholder="Buscar por clave, nombre o comentario..." 
@@ -95,8 +94,23 @@ function cargarInventario() {
             const cantDevuelta = yaDevuelto[item.insumoId] || 0;
             const pendiente = cantOriginal - cantDevuelta;
 
+            let fechaFin = new Date();
+            if (pendiente <= 0 || t.status === 'devuelto_total') {
+              const devsInsumo = devs.filter(d => (d.items || []).some(i => i.insumoId === item.insumoId));
+              if (devsInsumo.length > 0) {
+                devsInsumo.sort((a, b) => new Date(b.fechaSolicitud || 0) - new Date(a.fechaSolicitud || 0));
+                if (devsInsumo[0].fechaSolicitud) {
+                  fechaFin = new Date(devsInsumo[0].fechaSolicitud);
+                }
+              }
+            }
+            const fechaInicio = new Date(t.fechaSolicitud || Date.now());
+            const diffTime = fechaFin - fechaInicio;
+            const diasTranscurridos = diffTime > 0 ? Math.floor(diffTime / (1000 * 60 * 60 * 24)) : 0;
+
             rows.push({
               fecha: t.fechaSolicitud || '',
+              dias: diasTranscurridos,
               folio: t.folio,
               id: t.id,
               tipo: t.tipo,
@@ -155,6 +169,7 @@ function cargarInventario() {
                   <th>Cant. Préstamo Total</th>
                   <th>Cant. Devuelta</th>
                   <th>Pendiente por Devolver</th>
+                  <th>Días Transcurridos</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -183,6 +198,7 @@ function cargarInventario() {
                       <td class="text-sm" style="font-weight:700">${(r.prestamoTotal || 0).toFixed(2)}</td>
                       <td class="text-sm" style="font-weight:700;color:#16a34a">${(r.devuelta || 0).toFixed(2)}</td>
                       <td class="text-sm" style="font-weight:700">${pendHtml}</td>
+                      <td class="text-sm" style="text-align:center;font-weight:600">${r.dias}</td>
                       <td class="text-sm">${statusBadge(r.status)}</td>
                     </tr>
                   `;
@@ -290,7 +306,22 @@ async function exportarExcelInventario() {
         const cantOriginal = parseFloat(item.cantidad) || 0;
         const cantDevuelta = yaDevuelto[item.insumoId] || 0;
         const pendiente = cantOriginal - cantDevuelta;
-        const statusLabels = { pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
+
+        let fechaFin = new Date();
+        if (pendiente <= 0 || t.status === 'devuelto_total') {
+          const devsInsumo = devs.filter(d => (d.items || []).some(i => i.insumoId === item.insumoId));
+          if (devsInsumo.length > 0) {
+            devsInsumo.sort((a, b) => new Date(b.fechaSolicitud || 0) - new Date(a.fechaSolicitud || 0));
+            if (devsInsumo[0].fechaSolicitud) {
+              fechaFin = new Date(devsInsumo[0].fechaSolicitud);
+            }
+          }
+        }
+        const fechaInicio = new Date(t.fechaSolicitud || Date.now());
+        const diffTime = fechaFin - fechaInicio;
+        const diasTranscurridos = diffTime > 0 ? Math.floor(diffTime / (1000 * 60 * 60 * 24)) : 0;
+
+        const statusLabels = { pendiente_cordinador:'Pend. Cordinador', pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
         const statusLabel = statusLabels[t.status] || t.status;
 
         rows.push({
@@ -330,7 +361,7 @@ async function exportarExcelInventario() {
 
     const headers = [
       '#', 'Fecha', 'Folio', 'Tipo', 'Origen', 'Destino', 'Clave Insumo', 
-      'Descripción Insumo', 'Unidad', 'Cant. Préstamo Total', 'Cant. Devuelta', 'Pend. por Devolver', 'Estado'
+      'Descripción Insumo', 'Unidad', 'Cant. Préstamo Total', 'Cant. Devuelta', 'Pend. por Devolver', 'Días Transcurridos', 'Estado'
     ];
     worksheet.getRow(3).values = headers;
     worksheet.getRow(3).height = 28;
@@ -365,6 +396,7 @@ async function exportarExcelInventario() {
         r.prestamoTotal,
         r.devuelta,
         r.pendiente,
+        r.dias,
         r.status
       ]);
 
