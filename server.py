@@ -375,6 +375,7 @@ def get_db_centros_costo():
             LEFT JOIN testing.prof_empresas emp
                 ON cc.source = emp.source
             WHERE SUBSTRING(cc.id_cc FROM 1 FOR 3) ~ '^[1-9A-Za-z](12|13|18|50)$'
+               OR cc.id_cc LIKE '900%'
             ORDER BY cc.nombre_cc;
         """
         cur.execute(query)

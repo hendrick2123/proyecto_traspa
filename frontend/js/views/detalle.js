@@ -62,11 +62,11 @@ function verDetalle(id) {
        <div class="form-group"><label>Cordinador</label><div>${t.autorizadorCordinador}</div></div>
        <div class="form-group"><label>Fecha VoBo Cordinador</label><div>${fmtDate(t.fechaAutorizacionCordinador)}</div></div>` : ''}
        ${t.autorizador ? `
-       <div class="form-group"><label>Autorizador 1 (Residente)</label><div>${t.autorizador}</div></div>
-       <div class="form-group"><label>Fecha Auth. 1</label><div>${fmtDate(t.fechaAutorizacion)}</div></div>` : ''}
+       <div class="form-group"><label>Liberó (Residente)</label><div>${t.autorizador}</div></div>
+       <div class="form-group"><label>Fecha de Liberación</label><div>${fmtDate(t.fechaAutorizacion)}</div></div>` : ''}
        ${t.autorizador2 ? `
-       <div class="form-group"><label>Autorizador 2 (Control de Obra)</label><div>${t.autorizador2}</div></div>
-       <div class="form-group"><label>Fecha Auth. 2</label><div>${fmtDate(t.fechaAutorizacion2)}</div></div>` : ''}
+       <div class="form-group"><label>Autorizó (Control de Obra)</label><div>${t.autorizador2}</div></div>
+       <div class="form-group"><label>Fecha Autorización</label><div>${fmtDate(t.fechaAutorizacion2)}</div></div>` : ''}
        ${t.receptor ? `
        <div class="form-group"><label>Receptor</label><div>${t.receptor}</div></div>
        <div class="form-group"><label>Fecha Recepción</label><div>${fmtDate(t.fechaRecepcion)}</div></div>` : ''}
@@ -83,12 +83,12 @@ function verDetalle(id) {
      </div>` : ''}
      ${t.comentarioAuth ? `
      <div style="margin-bottom:12px">
-       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Auth. 1 (Residente)</label>
+       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Liberación (Residente)</label>
        <div style="margin-top:4px;font-size:13px">${t.comentarioAuth}</div>
      </div>` : ''}
      ${t.comentarioAuth2 ? `
      <div style="margin-bottom:12px">
-       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Auth. 2 (Control de Obra)</label>
+       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Autorizó (Control de Obra)</label>
        <div style="margin-top:4px;font-size:13px">${t.comentarioAuth2}</div>
      </div>` : ''}
      <div style="margin-bottom:4px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Insumos</div>
