@@ -431,11 +431,10 @@ def save_db_traspaso(t: dict, conn=None):
             conn = get_db_connection()
             close_conn = True
         cur = conn.cursor()
-        cur.execute('SELECT id_solicitud FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (t["folio"],))
-        existing = cur.fetchone()
+        is_update = "_dbId" in t
 
-        if existing:
-            sol_id = existing[0]
+        if is_update:
+            sol_id = t["_dbId"]
             cur.execute("""
                 UPDATE testing.solicitudes_traspasos_v2
                 SET estado=%s, autorizador=%s, fecha_autorizacion=%s, comentario_auth=%s,
@@ -450,6 +449,18 @@ def save_db_traspaso(t: dict, conn=None):
                 t.get("folioOriginalRef", None), sol_id,
             ))
         else:
+            folio_str = t["folio"]
+            cur.execute('SELECT id_solicitud FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
+            if cur.fetchone():
+                # Colision
+                prefix = t.get("tipo", "PRS")
+                max_num = get_max_folio_number(prefix, conn)
+                import datetime
+                year = datetime.datetime.now().year
+                folio_str = f"TRP-{prefix}-{year}-{str(max_num + 1).zfill(4)}"
+                t["folio"] = folio_str
+                print(f"Colision resuelta FastAPI: asigne {folio_str}", flush=True)
+
             cur.execute("""
                 INSERT INTO testing.solicitudes_traspasos_v2
                     (folio, tipo_traspaso, solicitante, estado, empresa_origen, empresa_destino,

@@ -210,10 +210,8 @@ function agregarItem() {
 let _insSearchActive = null; // índice del dropdown abierto
 
 function _getInsumosFiltered() {
-  return S.insumos.filter(ins => {
-    const first = String(ins.id).charAt(0);
-    return first === '1' || first === '3';
-  });
+  // Retornamos todos los insumos sin restringir por el primer dígito
+  return S.insumos;
 }
 
 function _openInsDropdown(i) {
@@ -409,7 +407,7 @@ function renderItems() {
   }
 }
 
-function guardarSolicitud() {
+async function guardarSolicitud() {
   const tipo   = document.getElementById('sol-tipo').value;
   const sol    = document.getElementById('sol-solicitante').value.trim();
   const ccOri  = document.getElementById('sol-cc-ori').value;
@@ -505,30 +503,52 @@ function guardarSolicitud() {
     comentarioRec:    null,
   };
 
-  S.traspasos.push(t);
-  saveState('traspasos');
+  const btn = document.querySelector('button[onclick="guardarSolicitud()"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Guardando...';
+  }
 
-  document.getElementById('content').innerHTML = `
-  <div class="card" style="max-width:600px;margin:40px auto">
-    <div class="card-body" style="text-align:center;padding:40px">
-      <div style="width:60px;height:60px;background:var(--green-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
-        <svg fill="none" viewBox="0 0 24 24" stroke="var(--green)" style="width:32px;height:32px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-      </div>
-      <div style="font-size:20px;font-weight:800;margin-bottom:8px">¡Solicitud Generada!</div>
-      <div style="font-size:26px;font-weight:900;color:var(--green);margin-bottom:4px">${folio}</div>
-      <div style="color:#888;font-size:13px;margin-bottom:24px">La solicitud está pendiente de autorización</div>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="imprimirTraspaso('${t.id}')">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-          Imprimir Solicitud
-        </button>
-        <button class="btn btn-secondary" onclick="navigate('nueva-solicitud')">Nueva Solicitud</button>
-        <button class="btn btn-secondary" onclick="navigate('autorizacion')">Ir a Autorización</button>
-      </div>
-    </div>
-  </div>`;
+  try {
+    S.traspasos.push(t);
+    await saveState('traspasos');
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
 
-  updateBadges();
+    const created = S.traspasos.find(x => x.fechaSolicitud === t.fechaSolicitud && x.solicitante === t.solicitante);
+    const finalFolio = created ? created.folio : folio;
+    const finalId = created ? created.id : t.id;
+
+    document.getElementById('content').innerHTML = `
+    <div class="card" style="max-width:600px;margin:40px auto">
+      <div class="card-body" style="text-align:center;padding:40px">
+        <div style="width:60px;height:60px;background:var(--green-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+          <svg fill="none" viewBox="0 0 24 24" stroke="var(--green)" style="width:32px;height:32px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:8px">¡Solicitud Generada!</div>
+        <div style="font-size:26px;font-weight:900;color:var(--green);margin-bottom:4px">${finalFolio}</div>
+        <div style="color:#888;font-size:13px;margin-bottom:24px">La solicitud está pendiente de autorización</div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="imprimirTraspaso('${finalId}')">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            Imprimir Solicitud
+          </button>
+          <button class="btn btn-secondary" onclick="navigate('nueva-solicitud')">Nueva Solicitud</button>
+          <button class="btn btn-secondary" onclick="navigate('autorizacion')">Ir a Autorización</button>
+        </div>
+      </div>
+    </div>`;
+
+    updateBadges();
+  } catch (err) {
+    console.error(err);
+    alert('Error al guardar la solicitud: ' + (err.message || err));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Guardar Solicitud';
+    }
+  }
 }
 
 async function subirFotoSaldos(i, d, input) {

@@ -50,13 +50,12 @@ function cargarHistorialProceso() {
   }
 
   fetchTraspasosPaginated({
-    page: hpPage,
-    limit: hpLimit,
+    page: 1,
+    limit: 5000,
     cc: '999'
   })
   .then(data => {
     const list = data.traspasos || [];
-    hpTotal = data.total || 0;
 
     let rows = [];
     list.forEach(t => {
@@ -90,9 +89,13 @@ function cargarHistorialProceso() {
 
     rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
+    hpTotal = rows.length;
+    const startIndex = (hpPage - 1) * hpLimit;
+    const pagedRows = rows.slice(startIndex, startIndex + hpLimit);
+
     document.getElementById('hp-total-count').textContent = `${hpTotal} movimientos`;
     
-    if (rows.length === 0) {
+    if (hpTotal === 0) {
       container.innerHTML = `
         <div class="empty-state" style="padding:40px 20px">
           <div style="font-size:40px;margin-bottom:12px">📦</div>
@@ -122,8 +125,8 @@ function cargarHistorialProceso() {
           </tr>
         </thead>
         <tbody id="hp-tbody">
-          ${rows.map((r, idx) => {
-            const indexOnPage = (hpPage - 1) * hpLimit + idx + 1;
+          ${pagedRows.map((r, idx) => {
+            const indexOnPage = startIndex + idx + 1;
             const fechaFmt = r.fecha ? fmtDate(r.fecha) : '—';
             const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
                             : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
