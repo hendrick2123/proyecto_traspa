@@ -26,13 +26,29 @@ def load_dotenv(filepath=None):
 load_dotenv()
 
 DB_CONFIG = {
-    "host":            os.environ.get("DB_HOST", "localhost"),
-    "port":            os.environ.get("DB_PORT", "5432"),
-    "dbname":          os.environ.get("DB_NAME", "postgres"),
-    "user":            os.environ.get("DB_USER", "postgres"),
-    "password":        os.environ.get("DB_PASSWORD", ""),
-    "connect_timeout": int(os.environ.get("DB_TIMEOUT", 5))
+    "host":                os.environ.get("DB_HOST", "localhost"),
+    "port":                os.environ.get("DB_PORT", "5432"),
+    "dbname":              os.environ.get("DB_NAME", "postgres"),
+    "user":                os.environ.get("DB_USER", "postgres"),
+    "password":            os.environ.get("DB_PASSWORD", ""),
+    "connect_timeout":     int(os.environ.get("DB_TIMEOUT", 5)),
+    "keepalives":          1,
+    "keepalives_idle":     30,
+    "keepalives_interval": 10,
+    "keepalives_count":    3,
+    "options":             "-c statement_timeout=60000"
 }
 
-def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+def get_db_connection(retries=3):
+    last_err = None
+    for attempt in range(retries):
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            return conn
+        except Exception as e:
+            last_err = e
+            print(f"[DB WARN] Intento {attempt + 1}/{retries} de conexión falló: {e}", file=sys.stderr, flush=True)
+            if attempt < retries - 1:
+                import time
+                time.sleep(1)
+    raise last_err

@@ -23,14 +23,8 @@ function renderRecepcion() {
               <tr>
                 <td><strong>${t.folio}</strong></td>
                 <td>${tipoBadge(t.tipo)}</td>
-                <td class="text-sm">
-                  <div style="font-weight:600">${getCC(t.ccOrigen).nombre}</div>
-                  <div style="color:#888;font-size:11px">${getDesarrollo(getCC(t.ccOrigen).empresaId).nombre}</div>
-                </td>
-                <td class="text-sm">
-                  <div style="font-weight:600">${getCC(t.ccDestino).nombre}</div>
-                  <div style="color:#888;font-size:11px">${getDesarrollo(getCC(t.ccDestino).empresaId).nombre}</div>
-                </td>
+                <td class="text-sm">${renderCCDisplay(t.ccOrigen, t.empresaOrigen)}</td>
+                <td class="text-sm">${renderCCDisplay(t.ccDestino, t.empresaDestino)}</td>
                 <td class="text-sm">${t.autorizador || '—'}</td>
                 <td class="text-sm">${fmtDate(t.fechaAutorizacion)}</td>
                 <td>

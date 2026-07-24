@@ -541,7 +541,12 @@ def save_db_traspaso(t, conn=None):
                     autorizador2      = %s,
                     fecha_autorizacion2 = %s,
                     comentario_auth2  = %s,
-                    folio_original_ref = %s
+                    folio_original_ref = %s,
+                    solicitante       = %s,
+                    empresa_origen    = %s,
+                    empresa_destino   = %s,
+                    cc_origen         = %s,
+                    cc_destino        = %s
                 WHERE id_solicitud = %s;
             """, (
                 t.get("status", "pendiente"),
@@ -556,8 +561,15 @@ def save_db_traspaso(t, conn=None):
                 t.get("fechaAutorizacion2"),
                 t.get("comentarioAuth2"),
                 t.get("folioOriginalRef", None),
+                t.get("solicitante", ""),
+                t.get("empresaOrigen", ""),
+                t.get("empresaDestino", ""),
+                t.get("ccOrigen", ""),
+                t.get("ccDestino", ""),
                 sol_id,
             ))
+            if "items" in t:
+                cur.execute("DELETE FROM testing.detalle_traspaso_insumos_v2 WHERE id_solicitud = %s;", (sol_id,))
         else:
             folio_str = t["folio"]
             cur.execute('SELECT id_solicitud FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
@@ -594,7 +606,8 @@ def save_db_traspaso(t, conn=None):
             ))
             sol_id = cur.fetchone()[0]
 
-            # INSERT detalle insumos
+        # INSERT / RE-INSERT detalle insumos
+        if "items" in t:
             items = t.get("items", [])
             for item in items:
                 insumo_id = item.get("insumoId", "")

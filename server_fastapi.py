@@ -119,26 +119,29 @@ CATALOG_CACHE: dict = {
 def get_db_empresas():
     if CATALOG_CACHE["empresas"] is not None:
         return CATALOG_CACHE["empresas"]
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("SELECT id_empresa, nombre_empresa FROM testing.prof_empresas GROUP BY id_empresa, nombre_empresa ORDER BY CAST(id_empresa AS INTEGER);")
-        rows = cur.fetchall(); cur.close(); conn.close()
+        rows = cur.fetchall(); cur.close()
         lst = [{"id": r[0], "nombre": r[1], "rfc": ""} for r in rows] if rows else EMPRESAS_DEFAULT.copy()
         if not any(e["id"] == "99" for e in lst):
             lst.append({"id": "99", "nombre": "Almacen", "rfc": ""})
         CATALOG_CACHE["empresas"] = lst
         return lst
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
     except Exception as e:
         print(f"DB Warning empresas: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["empresas"] = EMPRESAS_DEFAULT
         return EMPRESAS_DEFAULT
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 def get_db_centros_costo():
     if CATALOG_CACHE["centros_costo"] is not None:
         return CATALOG_CACHE["centros_costo"]
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         query = """
@@ -154,40 +157,44 @@ def get_db_centros_costo():
             ORDER BY cc.nombre_cc;
         """
         cur.execute(query)
-        rows = cur.fetchall(); cur.close(); conn.close()
+        rows = cur.fetchall(); cur.close()
         lst = [{"id": r[0], "empresaId": r[1], "nombre": r[2], "direccion": ""} for r in rows] if rows else CC_DEFAULT.copy()
         if not any(c["id"] == "999" for c in lst):
             lst.append({"id": "999", "empresaId": "99", "nombre": "Almacen", "direccion": ""})
         CATALOG_CACHE["centros_costo"] = lst
         return lst
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
     except Exception as e:
         print(f"DB Warning centros_costo: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["centros_costo"] = CC_DEFAULT
         return CC_DEFAULT
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 def get_db_desarrollos():
     if CATALOG_CACHE["desarrollos"] is not None:
         return CATALOG_CACHE["desarrollos"]
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("SELECT DISTINCT id_desarrollo, descripcion_desarrollo FROM testing.prof_desarrollos ORDER BY descripcion_desarrollo;")
-        rows = cur.fetchall(); cur.close(); conn.close()
+        rows = cur.fetchall(); cur.close()
         CATALOG_CACHE["desarrollos"] = [{"id": r[0], "nombre": r[1]} for r in rows] if rows else DESARROLLOS_DEFAULT
         return CATALOG_CACHE["desarrollos"]
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
     except Exception as e:
         print(f"DB Warning desarrollos: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["desarrollos"] = DESARROLLOS_DEFAULT
         return DESARROLLOS_DEFAULT
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 def get_db_insumos():
     if CATALOG_CACHE["insumos"] is not None:
         return CATALOG_CACHE["insumos"]
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
@@ -195,16 +202,17 @@ def get_db_insumos():
             FROM testing.prof_insumos_v2 ins
             ORDER BY ins.descripcion;
         """)
-        rows = cur.fetchall(); cur.close(); conn.close()
+        rows = cur.fetchall(); cur.close()
         CATALOG_CACHE["insumos"] = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material"} for r in rows] if rows else INSUMOS_DEFAULT
         return CATALOG_CACHE["insumos"]
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
     except Exception as e:
         print(f"DB Warning insumos: {e}", file=sys.stderr, flush=True)
         CATALOG_CACHE["insumos"] = INSUMOS_DEFAULT
         return INSUMOS_DEFAULT
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 def get_db_traspasos(conn=None):
     close_conn = False
@@ -335,16 +343,18 @@ def get_db_traspasos_paginated(
 
     if q:
         q_term = f"%{q}%"
-        # Búsqueda global en folio, solicitante, observaciones o en el detalle de insumos asociados
+        # Búsqueda global en folio, solicitante, observaciones, cc_origen, cc_destino, empresas e insumos asociados
         where_clauses.append("""
             (s.folio ILIKE %s OR s.solicitante ILIKE %s OR s.observaciones ILIKE %s 
+             OR s.cc_origen ILIKE %s OR s.cc_destino ILIKE %s
+             OR s.empresa_origen ILIKE %s OR s.empresa_destino ILIKE %s
              OR EXISTS (
                 SELECT 1 FROM testing.detalle_traspaso_insumos_v2 d2
                 WHERE d2.id_solicitud = s.id_solicitud 
-                AND (d2.clave_insumo ILIKE %s OR d2.descripcion_insumo ILIKE %s OR d2.comentario ILIKE %s)
+                AND (d2.clave_insumo ILIKE %s OR d2.nombre_insumo ILIKE %s OR d2.comentario_insumo ILIKE %s)
              ))
         """)
-        params.extend([q_term, q_term, q_term, q_term, q_term, q_term])
+        params.extend([q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term])
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
@@ -439,15 +449,21 @@ def save_db_traspaso(t: dict, conn=None):
                 UPDATE testing.solicitudes_traspasos_v2
                 SET estado=%s, autorizador=%s, fecha_autorizacion=%s, comentario_auth=%s,
                     receptor=%s, fecha_recepcion=%s, comentario_rec=%s, observaciones=%s,
-                    autorizador2=%s, fecha_autorizacion2=%s, comentario_auth2=%s, folio_original_ref=%s
+                    autorizador2=%s, fecha_autorizacion2=%s, comentario_auth2=%s, folio_original_ref=%s,
+                    solicitante=%s, empresa_origen=%s, empresa_destino=%s, cc_origen=%s, cc_destino=%s
                 WHERE id_solicitud = %s;
             """, (
                 t.get("status","pendiente"), t.get("autorizador"), t.get("fechaAutorizacion"),
                 t.get("comentarioAuth"), t.get("receptor"), t.get("fechaRecepcion"),
                 t.get("comentarioRec"), t.get("observaciones",""), t.get("autorizador2"),
                 t.get("fechaAutorizacion2"), t.get("comentarioAuth2"),
-                t.get("folioOriginalRef", None), sol_id,
+                t.get("folioOriginalRef", None),
+                t.get("solicitante", ""), t.get("empresaOrigen", ""), t.get("empresaDestino", ""),
+                t.get("ccOrigen", ""), t.get("ccDestino", ""),
+                sol_id,
             ))
+            if "items" in t:
+                cur.execute("DELETE FROM testing.detalle_traspaso_insumos_v2 WHERE id_solicitud = %s;", (sol_id,))
         else:
             folio_str = t["folio"]
             cur.execute('SELECT id_solicitud FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
@@ -474,6 +490,8 @@ def save_db_traspaso(t: dict, conn=None):
                 t.get("folioOriginalRef",None),
             ))
             sol_id = cur.fetchone()[0]
+
+        if "items" in t:
             for item in t.get("items", []):
                 insumo_id = item.get("insumoId","")
                 nombre    = item.get("nombre","")
@@ -998,6 +1016,7 @@ async def api_post_state(request: Request, user: dict = Depends(get_current_user
 
 @app.get("/api/users")
 def api_get_users(user: dict = Depends(get_current_user)):
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
@@ -1006,10 +1025,14 @@ def api_get_users(user: dict = Depends(get_current_user)):
         """)
         cols  = ["id","nombre","correo","username","rol","activo","creado_en","empresa_id","cc_ids"]
         users = [dict(zip(cols, row)) for row in cur.fetchall()]
-        cur.close(); conn.close()
+        cur.close()
         return {"users": users}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 @app.post("/api/auth/login")
 async def api_login(request: Request):
@@ -1018,6 +1041,7 @@ async def api_login(request: Request):
     password = body.get("password","")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos.")
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         # Fetch user WITH stored password hash for verification
@@ -1026,66 +1050,59 @@ async def api_login(request: Request):
             FROM testing.prof_usuarios WHERE username = %s
         """, (username,))
         row = cur.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+
+        stored_hash = row[8]
+        password_valid = False
+        needs_upgrade = False
+
+        # Try bcrypt verification first (new format)
+        if stored_hash and stored_hash.startswith("$2"):
+            password_valid = verify_password_bcrypt(password, stored_hash)
+        else:
+            # Fallback: try legacy SHA-256 verification
+            if stored_hash == hash_password_legacy(password):
+                password_valid = True
+                needs_upgrade = True  # Mark for automatic upgrade to bcrypt
+
+        if not password_valid:
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+
+        if not row[5]:
+            raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
+
+        # Auto-upgrade legacy SHA-256 hash to bcrypt
+        if needs_upgrade:
+            try:
+                new_hash = hash_password_bcrypt(password)
+                cur.execute("UPDATE testing.prof_usuarios SET password = %s WHERE id = %s;", (new_hash, row[0]))
+                conn.commit()
+                print(f"Auth: Password de '{username}' migrado de SHA-256 a bcrypt.", flush=True)
+            except Exception as e:
+                print(f"Auth Warning: No se pudo migrar password de {username}: {e}", file=sys.stderr, flush=True)
+
+        cur.close()
+
+        user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
+        token = hashlib.sha256(os.urandom(16)).hexdigest()
+        # Expira en 8 horas (28800 segundos)
+        ACTIVE_SESSIONS[token] = {
+            "user": user,
+            "expires_at": time.time() + 28800
+        }
+        save_sessions()
+        print(f"Auth: Login exitoso - {username} ({row[4]}) empresa={row[6]}", flush=True)
+        return {"user": user, "token": token}
+    except HTTPException:
+        raise
     except Exception as e:
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
-    
-    if not row:
-        if 'conn' in locals() and conn:
+    finally:
+        if conn:
             try: conn.close()
             except: pass
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
-    
-    stored_hash = row[8]
-    password_valid = False
-    needs_upgrade = False
-    
-    # Try bcrypt verification first (new format)
-    if stored_hash and stored_hash.startswith("$2"):
-        password_valid = verify_password_bcrypt(password, stored_hash)
-    else:
-        # Fallback: try legacy SHA-256 verification
-        if stored_hash == hash_password_legacy(password):
-            password_valid = True
-            needs_upgrade = True  # Mark for automatic upgrade to bcrypt
-    
-    if not password_valid:
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
-    
-    if not row[5]:
-        if 'conn' in locals() and conn:
-            try: conn.close()
-            except: pass
-        raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
-    
-    # Auto-upgrade legacy SHA-256 hash to bcrypt
-    if needs_upgrade:
-        try:
-            new_hash = hash_password_bcrypt(password)
-            cur.execute("UPDATE testing.prof_usuarios SET password = %s WHERE id = %s;", (new_hash, row[0]))
-            conn.commit()
-            print(f"Auth: Password de '{username}' migrado de SHA-256 a bcrypt.", flush=True)
-        except Exception as e:
-            print(f"Auth Warning: No se pudo migrar password de {username}: {e}", file=sys.stderr, flush=True)
-    
-    try: cur.close(); conn.close()
-    except: pass
-    
-    user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
-    token = hashlib.sha256(os.urandom(16)).hexdigest()
-    # Expira en 8 horas (28800 segundos)
-    ACTIVE_SESSIONS[token] = {
-        "user": user,
-        "expires_at": time.time() + 28800
-    }
-    save_sessions()
-    print(f"Auth: Login exitoso - {username} ({row[4]}) empresa={row[6]}", flush=True)
-    return {"user": user, "token": token}
 
 @app.post("/api/auth/register", status_code=201)
 async def api_register(request: Request, user: dict = Depends(get_current_user)):
@@ -1112,6 +1129,7 @@ async def api_register(request: Request, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=400, detail="Debes seleccionar la empresa a la que perteneces.")
     if rol not in ("administrador","residente","cordinador") and not cc_ids:
         raise HTTPException(status_code=400, detail="Debes seleccionar al menos un centro de costo.")
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
@@ -1119,13 +1137,17 @@ async def api_register(request: Request, user: dict = Depends(get_current_user))
             VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id;
         """, (nombre, correo, username, hash_password_bcrypt(password), rol, empresa_id or None, cc_ids or None))
         new_id = cur.fetchone()[0]
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close()
         print(f"Auth: Nuevo usuario registrado por {user.get('username','')} - {username} ({rol})", flush=True)
         return {"ok": True, "id": new_id}
     except psycopg2.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail="El usuario o correo ya está registrado.")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 @app.put("/api/users/{user_id}")
 async def api_update_user(user_id: int, request: Request, user: dict = Depends(get_current_user)):
@@ -1145,23 +1167,33 @@ async def api_update_user(user_id: int, request: Request, user: dict = Depends(g
     if "cc_ids"    in body: updates.append("cc_ids = %s"); params.append(body["cc_ids"] or None)
     if not updates: raise HTTPException(status_code=400, detail="Sin campos a actualizar.")
     params.append(user_id)
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute(f"UPDATE testing.prof_usuarios SET {', '.join(updates)} WHERE id = %s;", params)
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close()
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 @app.delete("/api/users/{user_id}")
 async def api_delete_user(user_id: int, user: dict = Depends(get_current_user)):
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("DELETE FROM testing.prof_usuarios WHERE id = %s;", (user_id,))
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close()
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 @app.post("/api/upload")
 async def api_upload(request: Request, user: dict = Depends(get_current_user)):

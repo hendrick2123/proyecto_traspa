@@ -220,6 +220,9 @@ function renderHistorialTable(list) {
   if (list.length === 0) {
     return '<div class="empty-state"><p>Sin movimientos</p><span>No se encontraron registros con los filtros seleccionados</span></div>';
   }
+  const user = getUser();
+  const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador');
+
   return `<table>
     <thead>
       <tr><th>Folio</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Solicitante</th><th>Fecha Sol.</th><th>Autorizó</th><th>Estado</th><th></th></tr>
@@ -232,14 +235,8 @@ function renderHistorialTable(list) {
           ${t.folioOriginalRef ? `<div style="font-size:10px;color:#888">Ref: ${t.folioOriginalRef}</div>` : ''}
         </td>
         <td>${tipoBadge(t.tipo)}</td>
-        <td class="text-sm">
-          <div style="font-weight:600">${getCC(t.ccOrigen).nombre}</div>
-          <div style="color:#888;font-size:11px">${getDesarrollo(getCC(t.ccOrigen).empresaId).nombre}</div>
-        </td>
-        <td class="text-sm">
-          <div style="font-weight:600">${getCC(t.ccDestino).nombre}</div>
-          <div style="color:#888;font-size:11px">${getDesarrollo(getCC(t.ccDestino).empresaId).nombre}</div>
-        </td>
+        <td class="text-sm">${renderCCDisplay(t.ccOrigen, t.empresaOrigen)}</td>
+        <td class="text-sm">${renderCCDisplay(t.ccDestino, t.empresaDestino)}</td>
         <td class="text-sm">${t.solicitante}</td>
         <td class="text-sm">${fmtDate(t.fechaSolicitud)}</td>
         <td class="text-sm">${t.autorizador ? (t.autorizador2 ? `${t.autorizador} / ${t.autorizador2}` : t.autorizador) : '—'}</td>
@@ -248,6 +245,7 @@ function renderHistorialTable(list) {
           <div style="display:flex;gap:6px;align-items:center">
             <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
             <button class="btn btn-secondary btn-sm" onclick="imprimirTraspaso('${t.id}')">🖨</button>
+            ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="modalEditarTraspaso('${t.id}')" title="Editar Traspaso">✏️ Editar</button>` : ''}
             ${tienePendientesDevolucion(t)
               ? (tieneDevolucionEnProceso(t)
                 ? (() => {
@@ -263,4 +261,178 @@ function renderHistorialTable(list) {
       </tr>`).join('')}
     </tbody>
   </table>`;
+}
+
+let _editItemsTemp = [];
+
+function modalEditarTraspaso(id) {
+  const user = getUser();
+  if (!user || (user.rol !== 'residente' && user.rol !== 'administrador')) {
+    return alert('Solo los usuarios con rol Residente o Administrador pueden editar traspasos.');
+  }
+
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  _editItemsTemp = (t.items || []).map(i => ({ ...i }));
+
+  const body = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="form-group">
+        <label>Folio</label>
+        <div style="font-size:16px;font-weight:800;color:var(--green)">${t.folio}</div>
+      </div>
+      <div class="form-group">
+        <label>Solicitante *</label>
+        <input type="text" id="edit-solicitante" value="${(t.solicitante || '').replace(/"/g, '&quot;')}" style="border:1px solid #ccc;padding:6px 10px;border-radius:4px;width:100%;font-size:12px">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Observaciones</label>
+      <textarea id="edit-obs" style="border:1px solid #ccc;padding:6px 10px;border-radius:4px;width:100%;font-size:12px;height:60px">${(t.observaciones || '')}</textarea>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <label style="font-weight:700;font-size:13px">Insumos del Traspaso</label>
+      <button class="btn btn-secondary btn-sm" onclick="_agregarEditItemTemp()">+ Agregar Insumo</button>
+    </div>
+
+    <div class="items-table-wrap" style="overflow:visible;max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:6px;padding:6px">
+      <table style="width:100%">
+        <thead>
+          <tr>
+            <th>Insumo</th>
+            <th style="width:90px">Cantidad</th>
+            <th style="width:70px">Unidad</th>
+            <th style="width:80px;text-align:center">Foto</th>
+            <th>Comentario / Descripción</th>
+            <th style="width:30px"></th>
+          </tr>
+        </thead>
+        <tbody id="edit-items-tbody">
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-guardar-edit" onclick="guardarEdicionTraspaso('${id}')">💾 Guardar Cambios</button>
+  `;
+
+  openModal(`Editar Traspaso · ${t.folio}`, body, footer);
+  _renderEditItemsTbody();
+}
+
+function _agregarEditItemTemp() {
+  _editItemsTemp.push({ insumoId: '', nombre: '', unidad: 'Pieza', cantidad: 1, comentario: '', imagen: '' });
+  _renderEditItemsTbody();
+}
+
+function _renderEditItemsTbody() {
+  const tbody = document.getElementById('edit-items-tbody');
+  if (!tbody) return;
+
+  if (_editItemsTemp.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="color:#aaa;padding:15px">No hay insumos.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = _editItemsTemp.map((item, i) => {
+    const ins = item.insumoId ? getInsumo(item.insumoId) : null;
+    const displayVal = ins ? ins.clave + ' · ' + ins.nombre : (item.nombre || '');
+    const thumb = item.imagen ? `<img src="${item.imagen}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${item.imagen}')" title="Ver foto">` : '';
+
+    return `<tr>
+      <td>
+        <input type="text" value="${displayVal.replace(/"/g, '&quot;')}" readonly style="background:#f8fafc;border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%" title="${displayVal}">
+      </td>
+      <td>
+        <input type="number" min="0.01" step="any" value="${item.cantidad}" onchange="_editItemsTemp[${i}].cantidad=parseFloat(this.value)||0" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
+      </td>
+      <td style="font-size:11px;color:#666">${ins ? ins.unidad : (item.unidad || 'Pza')}</td>
+      <td style="text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;font-size:12px" title="Cambiar Foto">
+            📸
+            <input type="file" accept="image/jpeg, image/png, image/jpg" style="display:none" onchange="_subirFotoEditTemp(${i}, this)">
+          </label>
+          <div id="thumb-edit-${i}">${thumb}</div>
+        </div>
+      </td>
+      <td>
+        <input type="text" value="${(item.comentario || '').replace(/"/g, '&quot;')}" onchange="_editItemsTemp[${i}].comentario=this.value" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
+      </td>
+      <td style="text-align:center">
+        <button onclick="_editItemsTemp.splice(${i},1);_renderEditItemsTbody()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;font-weight:700">×</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function _subirFotoEditTemp(i, input) {
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
+    return alert('Solo se permiten imágenes en formato JPG o PNG');
+  }
+  const thumbDiv = document.getElementById(`thumb-edit-${i}`);
+  if (thumbDiv) thumbDiv.innerHTML = '<span style="font-size:10px">⏳</span>';
+
+  try {
+    const b64 = await resizeAndCompressImage(file, 800);
+    const token = sessionStorage.getItem('gu_token') || '';
+    const res = await fetch(API_BASE + '/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ image: b64 })
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    _editItemsTemp[i].imagen = data.url;
+    if (thumbDiv) thumbDiv.innerHTML = `<img src="${data.url}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${data.url}')">`;
+  } catch (e) {
+    alert('Error al subir imagen');
+    if (thumbDiv) thumbDiv.innerHTML = '❌';
+  }
+}
+
+async function guardarEdicionTraspaso(id) {
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  const sol = document.getElementById('edit-solicitante')?.value.trim();
+  const obs = document.getElementById('edit-obs')?.value.trim();
+
+  if (!sol) return alert('El nombre del solicitante no puede estar vacío');
+  if (_editItemsTemp.length === 0) return alert('El traspaso debe tener al menos un insumo');
+  if (_editItemsTemp.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
+
+  const btn = document.getElementById('btn-guardar-edit');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Guardando...';
+  }
+
+  try {
+    t.solicitante = sol;
+    t.observaciones = obs;
+    t.items = _editItemsTemp;
+
+    await saveState('traspasos');
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
+
+    closeModal();
+    cargarHistorial();
+  } catch (err) {
+    console.error(err);
+    alert('Error al guardar cambios: ' + (err.message || err));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Guardar Cambios';
+    }
+  }
 }

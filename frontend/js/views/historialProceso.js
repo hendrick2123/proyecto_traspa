@@ -40,6 +40,8 @@ function renderHistorialProceso() {
   cargarHistorialProceso();
 }
 
+let hpAllRows = [];
+
 function cargarHistorialProceso() {
   const container = document.getElementById('hp-table-container');
   if (container) {
@@ -64,19 +66,19 @@ function cargarHistorialProceso() {
       const ccOriNombre = ccOriObj ? ccOriObj.nombre : t.ccOrigen;
       const ccDesNombre = ccDesObj ? ccDesObj.nombre : t.ccDestino;
 
-      t.items.forEach((item, idx) => {
+      t.items.forEach((item) => {
         const ins = getInsumo(item.insumoId);
         rows.push({
           fecha: t.fechaSolicitud || '',
-          folio: t.folio,
+          folio: t.folio || '',
           id: t.id,
-          tipo: t.tipo,
-          status: t.status,
-          ccOrigen: t.ccOrigen,
-          ccOrigenNombre: ccOriNombre,
-          ccDestino: t.ccDestino,
-          ccDestinoNombre: ccDesNombre,
-          clave: ins ? ins.clave : item.insumoId,
+          tipo: t.tipo || '',
+          status: t.status || '',
+          ccOrigen: t.ccOrigen || '',
+          ccOrigenNombre: ccOriNombre || '',
+          ccDestino: t.ccDestino || '',
+          ccDestinoNombre: ccDesNombre || '',
+          clave: ins ? ins.clave : (item.insumoId || ''),
           nombre: ins ? ins.nombre : (item.nombre || 'Desconocido'),
           unidad: ins ? ins.unidad : (item.unidad || 'Pza'),
           cantidad: item.cantidad || 0,
@@ -88,89 +90,116 @@ function cargarHistorialProceso() {
     });
 
     rows.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-
-    hpTotal = rows.length;
-    const startIndex = (hpPage - 1) * hpLimit;
-    const pagedRows = rows.slice(startIndex, startIndex + hpLimit);
-
-    document.getElementById('hp-total-count').textContent = `${hpTotal} movimientos`;
-    
-    if (hpTotal === 0) {
-      container.innerHTML = `
-        <div class="empty-state" style="padding:40px 20px">
-          <div style="font-size:40px;margin-bottom:12px">📦</div>
-          <p>No hay movimientos registrados para el CC 999</p>
-        </div>`;
-      document.getElementById('hp-pagination').innerHTML = '';
-      return;
-    }
-
-    container.innerHTML = `
-      <table id="hp-tabla">
-        <thead>
-          <tr>
-            <th style="width:40px">#</th>
-            <th>Fecha</th>
-            <th>Folio</th>
-            <th>Tipo</th>
-            <th>CC Origen</th>
-            <th>CC Destino</th>
-            <th>Clave</th>
-            <th>Insumo</th>
-            <th>Unidad</th>
-            <th>Cant.</th>
-            <th>Precio</th>
-            <th>Descripción</th>
-            <th>Foto</th>
-          </tr>
-        </thead>
-        <tbody id="hp-tbody">
-          ${pagedRows.map((r, idx) => {
-            const indexOnPage = startIndex + idx + 1;
-            const fechaFmt = r.fecha ? fmtDate(r.fecha) : '—';
-            const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
-                            : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
-                            : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
-                            : `<span class="badge badge-draft">${r.tipo}</span>`;
-            const fotoHtml = r.imagen
-              ? `<img src="${r.imagen}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0" onclick="window.open('${r.imagen}')" title="Ver foto">`
-              : '<span style="color:#ccc;font-size:11px">—</span>';
-
-            return `
-              <tr class="hp-row" data-search="${(r.clave + ' ' + r.nombre + ' ' + r.comentario).toLowerCase()}">
-                <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
-                <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
-                <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
-                <td>${tBadge}</td>
-                <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
-                <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
-                <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
-                <td class="text-sm">${r.nombre}</td>
-                <td class="text-sm">${r.unidad}</td>
-                <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
-                <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
-                <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
-                <td style="text-align:center">${fotoHtml}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    `;
-
-    renderHpPaginationControls();
+    hpAllRows = rows;
+    renderHpTable();
   })
   .catch(err => {
     console.error(err);
-    container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del almacén.</div>';
+    if (container) {
+      container.innerHTML = '<div class="alert alert-danger">Error al cargar datos del almacén.</div>';
+    }
   });
+}
+
+function _getFilteredHpRows() {
+  const query = (document.getElementById('hp-buscar')?.value || '').toLowerCase().trim();
+  if (!query) return hpAllRows;
+  return hpAllRows.filter(r => {
+    const text = `${r.folio} ${r.clave} ${r.nombre} ${r.comentario} ${r.ccOrigen} ${r.ccOrigenNombre} ${r.ccDestino} ${r.ccDestinoNombre} ${r.tipo}`.toLowerCase();
+    return text.includes(query);
+  });
+}
+
+function renderHpTable() {
+  const container = document.getElementById('hp-table-container');
+  if (!container) return;
+
+  const filteredRows = _getFilteredHpRows();
+  hpTotal = filteredRows.length;
+
+  const totalCountEl = document.getElementById('hp-total-count');
+  if (totalCountEl) {
+    totalCountEl.textContent = `${hpTotal} movimientos`;
+  }
+
+  if (hpTotal === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:40px 20px">
+        <div style="font-size:40px;margin-bottom:12px">📦</div>
+        <p>No se encontraron movimientos</p>
+      </div>`;
+    const pagEl = document.getElementById('hp-pagination');
+    if (pagEl) pagEl.innerHTML = '';
+    return;
+  }
+
+  const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
+  if (hpPage > totalPaginas) hpPage = totalPaginas;
+
+  const startIndex = (hpPage - 1) * hpLimit;
+  const pagedRows = filteredRows.slice(startIndex, startIndex + hpLimit);
+
+  container.innerHTML = `
+    <table id="hp-tabla">
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th>Fecha</th>
+          <th>Folio</th>
+          <th>Tipo</th>
+          <th>CC Origen</th>
+          <th>CC Destino</th>
+          <th>Clave</th>
+          <th>Insumo</th>
+          <th>Unidad</th>
+          <th>Cant.</th>
+          <th>Precio</th>
+          <th>Descripción</th>
+          <th>Foto</th>
+        </tr>
+      </thead>
+      <tbody id="hp-tbody">
+        ${pagedRows.map((r, idx) => {
+          const indexOnPage = startIndex + idx + 1;
+          const fechaFmt = r.fecha ? fmtDate(r.fecha) : '—';
+          const tBadge = r.tipo === 'PRS' ? '<span class="badge badge-loan">Préstamo</span>'
+                          : r.tipo === 'TOB' ? '<span class="badge badge-obra">Término</span>'
+                          : r.tipo === 'GAR' ? '<span class="badge badge-pending">Garantía</span>'
+                          : `<span class="badge badge-draft">${r.tipo}</span>`;
+          const fotoHtml = r.imagen
+            ? `<img src="${r.imagen}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0" onclick="window.open('${r.imagen}')" title="Ver foto">`
+            : '<span style="color:#ccc;font-size:11px">—</span>';
+
+          return `
+            <tr class="hp-row">
+              <td class="text-sm" style="color:#aaa;font-weight:700">${indexOnPage}</td>
+              <td class="text-sm" style="white-space:nowrap">${fechaFmt}</td>
+              <td><a href="#" class="timeline-folio" onclick="verDetalle('${r.id}'); return false;">${r.folio}</a></td>
+              <td>${tBadge}</td>
+              <td class="text-sm" title="${r.ccOrigenNombre}"><strong>${r.ccOrigen}</strong></td>
+              <td class="text-sm" title="${r.ccDestinoNombre}"><strong>${r.ccDestino}</strong></td>
+              <td class="text-sm" style="font-weight:700;color:#1e40af">${r.clave}</td>
+              <td class="text-sm">${r.nombre}</td>
+              <td class="text-sm">${r.unidad}</td>
+              <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
+              <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
+              <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
+              <td style="text-align:center">${fotoHtml}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  renderHpPaginationControls();
 }
 
 function cambiarHpPagina(nuevaPagina) {
   const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
   if (nuevaPagina < 1 || nuevaPagina > totalPaginas) return;
   hpPage = nuevaPagina;
-  cargarHistorialProceso();
+  renderHpTable();
 }
 
 function renderHpPaginationControls() {
@@ -179,7 +208,7 @@ function renderHpPaginationControls() {
 
   const totalPaginas = Math.ceil(hpTotal / hpLimit) || 1;
   const rangeInfo = hpTotal > 0
-    ? `Mostrando ${(hpPage - 1) * hpLimit + 1} - ${Math.min(hpPage * hpLimit, hpTotal)} de ${hpTotal} traspasos`
+    ? `Mostrando ${(hpPage - 1) * hpLimit + 1} - ${Math.min(hpPage * hpLimit, hpTotal)} de ${hpTotal} movimientos`
     : `Mostrando 0 - 0 de 0`;
 
   paginationContainer.innerHTML = `
@@ -197,12 +226,8 @@ function renderHpPaginationControls() {
 }
 
 function filtrarHistorialProceso() {
-  const query = (document.getElementById('hp-buscar')?.value || '').toLowerCase().trim();
-  const filas = document.querySelectorAll('.hp-row');
-  filas.forEach(fila => {
-    const data = fila.getAttribute('data-search') || '';
-    fila.style.display = (!query || data.includes(query)) ? '' : 'none';
-  });
+  hpPage = 1;
+  renderHpTable();
 }
 
 async function exportarExcel() {
@@ -258,29 +283,24 @@ async function exportarExcel() {
       };
     }
 
-    const rows = table.querySelectorAll('tbody tr');
+    const exportRows = _getFilteredHpRows();
     let excelRowIndex = 4;
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const tds = row.querySelectorAll('td');
-      if (tds.length === 0) continue;
-
-      const idxValue = tds[0].textContent.trim();
-      const fechaValue = tds[1].textContent.trim();
-      const folioValue = tds[2].textContent.trim();
-      const tipoValue = tds[3].textContent.trim();
-      const ccOriValue = tds[4].textContent.trim();
-      const ccDesValue = tds[5].textContent.trim();
-      const claveValue = tds[6].textContent.trim();
-      const insumoValue = tds[7].textContent.trim();
-      const unidadValue = tds[8].textContent.trim();
-      const cantValue = parseFloat(tds[9].textContent.trim()) || 0;
-      const precioValue = parseFloat(tds[10].textContent.replace(/[$,]/g, '').trim()) || 0;
-      const comentarioValue = tds[11].textContent.trim();
-      
-      const imgEl = tds[12].querySelector('img');
-      const imgUrl = imgEl ? imgEl.getAttribute('src') : null;
+    for (let i = 0; i < exportRows.length; i++) {
+      const r = exportRows[i];
+      const idxValue = i + 1;
+      const fechaValue = r.fecha ? fmtDate(r.fecha) : '—';
+      const folioValue = r.folio || '';
+      const tipoValue = r.tipo || '';
+      const ccOriValue = r.ccOrigen || '';
+      const ccDesValue = r.ccDestino || '';
+      const claveValue = r.clave || '';
+      const insumoValue = r.nombre || '';
+      const unidadValue = r.unidad || '';
+      const cantValue = r.cantidad || 0;
+      const precioValue = r.precio || 0;
+      const comentarioValue = r.comentario || '';
+      const imgUrl = r.imagen || null;
 
       const newRow = worksheet.addRow([
         parseInt(idxValue) || idxValue,

@@ -179,25 +179,55 @@ function now() {
 
 // ── Lookup helpers ───────────────────────────────────
 function getEmpresa(id) {
-  return S.empresas.find(e => e.id === id) || { nombre: '—' };
+  if (!id) return { nombre: '' };
+  const strId = String(id).trim();
+  const found = S.empresas.find(e => String(e.id).trim() === strId || (e.nombre && e.nombre.trim() === strId));
+  if (found) return found;
+  return { id: strId, nombre: strId };
 }
 
 function getCC(id) {
-  return S.centrosCosto.find(c => c.id === id) || { nombre: '—' };
+  if (!id) return { nombre: '' };
+  const strId = String(id).trim();
+  const found = S.centrosCosto.find(c => String(c.id).trim() === strId || (c.nombre && c.nombre.trim() === strId));
+  if (found) return found;
+  return { id: strId, nombre: strId };
 }
 
 function getInsumo(id) {
-  return S.insumos.find(i => i.id === id) || { nombre: '—', unidad: '—', clave: '—' };
+  if (!id) return { nombre: '—', unidad: '—', clave: '—' };
+  const strId = String(id).trim();
+  const found = S.insumos.find(i => String(i.id).trim() === strId || String(i.clave).trim() === strId || (i.nombre && i.nombre.trim() === strId));
+  if (found) return found;
+  return { id: strId, nombre: strId, unidad: '—', clave: '—' };
 }
 
 // Returns the Desarrollo name linked to a CC's empresaId
 function getDesarrollo(empresaId) {
+  if (!empresaId) return { nombre: '' };
   if (S.desarrollos) {
-    const dev = S.desarrollos.find(d => d.id === empresaId);
+    const dev = S.desarrollos.find(d => String(d.id).trim() === String(empresaId).trim() || (d.nombre && d.nombre.trim() === String(empresaId).trim()));
     if (dev) return dev;
   }
   // Fallback to empresa name
   return getEmpresa(empresaId);
+}
+
+function renderCCDisplay(ccId, empId) {
+  const cc = getCC(ccId);
+  const ccNombre = cc ? (cc.nombre || ccId || '') : (ccId || '');
+  const devEmpId = (cc && cc.empresaId) ? cc.empresaId : empId;
+  const devObj = devEmpId ? getDesarrollo(devEmpId) : null;
+  const devNombre = devObj ? (devObj.nombre || '') : '';
+
+  if (!ccNombre && !devNombre) return '<span style="color:#aaa">—</span>';
+  if (ccNombre === devNombre || !devNombre) {
+    return `<div style="font-weight:600">${ccNombre}</div>`;
+  }
+  return `
+    <div style="font-weight:600">${ccNombre}</div>
+    <div style="color:#888;font-size:11px">${devNombre}</div>
+  `;
 }
 
 // ── Filtros por empresa y centro de costo (multi-tenant) ───────────────
