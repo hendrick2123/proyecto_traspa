@@ -83,9 +83,18 @@ function renderNuevaSolicitud() {
       </div>
       <div class="items-table-wrap" style="overflow:visible">
         <table>
-          <thead><tr><th>Insumo</th><th style="width:120px">Cantidad</th><th style="width:100px">Unidad</th><th style="width:40px"></th></tr></thead>
+          <thead>
+            <tr>
+              <th>Insumo</th>
+              <th style="width:110px">Cantidad</th>
+              <th style="width:90px">Unidad</th>
+              <th style="width:90px;text-align:center">Foto</th>
+              <th>Comentario / Descripción (Opcional)</th>
+              <th style="width:40px"></th>
+            </tr>
+          </thead>
           <tbody id="items-tbody">
-            <tr><td colspan="4" class="text-center" style="color:#aaa;padding:20px">No hay insumos. Presione "+ Agregar Insumo"</td></tr>
+            <tr><td colspan="6" class="text-center" style="color:#aaa;padding:20px">No hay insumos. Presione "+ Agregar Insumo"</td></tr>
           </tbody>
         </table>
       </div>
@@ -202,7 +211,7 @@ function updateInfoDes() {
 }
 
 function agregarItem() {
-  solicitudItems.push({ insumoId: '', cantidad: 1, detalles: [{precio: 0, comentario: '', imagen: ''}] });
+  solicitudItems.push({ insumoId: '', cantidad: 1, comentario: '', imagen: '' });
   renderItems();
 }
 
@@ -251,10 +260,6 @@ function _filterInsDropdown(i) {
 }
 
 function _selectInsumo(i, insumoId) {
-  const oldInsumoId = solicitudItems[i].insumoId;
-  const oldIns = oldInsumoId ? getInsumo(oldInsumoId) : null;
-  const oldNombre = oldIns ? oldIns.nombre : '';
-
   solicitudItems[i].insumoId = insumoId;
   const ins = getInsumo(insumoId);
   const input = document.getElementById('ins-search-' + i);
@@ -263,19 +268,6 @@ function _selectInsumo(i, insumoId) {
   // Actualizar celda de unidad
   const unidadCell = document.getElementById('ins-unit-' + i);
   if (unidadCell) unidadCell.textContent = ins ? ins.unidad : '—';
-
-  // Si es un traspaso de 999 a 999, inicializar/actualizar comentarios vacíos o con el nombre del insumo anterior
-  const ccOri = document.getElementById('sol-cc-ori')?.value;
-  const ccDes = document.getElementById('sol-cc-des')?.value;
-  if (ccOri === '999' && ccDes === '999' && ins) {
-    if (solicitudItems[i].detalles) {
-      solicitudItems[i].detalles.forEach(d => {
-        if (!d.comentario || !d.comentario.trim() || d.comentario === oldNombre) {
-          d.comentario = ins.nombre;
-        }
-      });
-    }
-  }
   renderItems();
 }
 
@@ -292,40 +284,16 @@ function renderItems() {
   if (!tbody) return;
 
   if (solicitudItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:#aaa;padding:20px">No hay insumos. Presione "+ Agregar Insumo"</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="color:#aaa;padding:20px">No hay insumos. Presione "+ Agregar Insumo"</td></tr>';
     return;
   }
-
-  const isSaldos = document.getElementById('sol-cc-des')?.value === '999';
 
   tbody.innerHTML = solicitudItems.map((item, i) => {
     const ins = item.insumoId ? getInsumo(item.insumoId) : null;
     const displayVal = ins ? ins.clave + ' · ' + ins.nombre : '';
-    
-    // Sincronizar detalles con la cantidad si es saldos
-    if (isSaldos && item.cantidad > 0) {
-      if (!item.detalles) item.detalles = [];
-      const cant = Math.floor(item.cantidad);
-      const ccOri = document.getElementById('sol-cc-ori')?.value;
-      const ccDes = document.getElementById('sol-cc-des')?.value;
-      
-      const insName = ins ? ins.nombre : '';
-      const defaultComentario = (ccOri === '999' && ccDes === '999') ? insName : '';
+    const thumb = item.imagen ? `<img src="${item.imagen}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${item.imagen}')" title="Ver foto">` : '';
 
-      // Si es un traspaso del 999 al 999, pre-rellenar con el nombre del insumo los comentarios vacíos
-      if (ccOri === '999' && ccDes === '999') {
-        item.detalles.forEach(d => {
-          if (!d.comentario || !d.comentario.trim()) {
-            d.comentario = insName;
-          }
-        });
-      }
-
-      while(item.detalles.length < cant) item.detalles.push({precio: 0, comentario: defaultComentario, imagen: ''});
-      while(item.detalles.length > cant) item.detalles.pop();
-    }
-
-    let html = `<tr>
+    return `<tr>
       <td>
         <div class="ins-search-wrap" style="position:relative">
           <div style="display:flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:6px;padding:5px 10px;background:#fff;cursor:text"
@@ -349,39 +317,31 @@ function renderItems() {
         </div>
       </td>
       <td>
-        <input type="number" min="1" step="${isSaldos ? '1' : 'any'}" value="${item.cantidad}"
-               onchange="solicitudItems[${i}].cantidad=parseFloat(this.value)||0;renderItems()"
+        <input type="number" min="0.01" step="any" value="${item.cantidad}"
+               onchange="solicitudItems[${i}].cantidad=parseFloat(this.value)||0"
                style="border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-family:Montserrat,sans-serif;font-size:12px;width:100%">
       </td>
       <td id="ins-unit-${i}" style="color:#888;font-size:12px">${ins ? ins.unidad : '—'}</td>
+      <td style="text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;color:#475569;font-size:14px" title="Subir Foto (Opcional)">
+            📸
+            <input type="file" accept="image/jpeg, image/png, image/jpg" style="display:none" onchange="subirFotoItem(${i}, this)">
+          </label>
+          <div id="thumb-${i}" style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center">${thumb}</div>
+        </div>
+      </td>
       <td>
+        <input type="text" placeholder="Comentario o especificaciones opcionales..." 
+               value="${(item.comentario || '').replace(/"/g, '&quot;')}" 
+               onchange="solicitudItems[${i}].comentario = this.value"
+               style="border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-family:Montserrat,sans-serif;font-size:12px;width:100%">
+      </td>
+      <td style="text-align:center">
         <button onclick="solicitudItems.splice(${i},1);renderItems()"
-                style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px">×</button>
+                style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;font-weight:700">×</button>
       </td>
     </tr>`;
-
-    if (isSaldos && item.cantidad > 0) {
-      html += `<tr><td colspan="4" style="padding:0"><div style="background:#f8fafc;padding:10px 20px;border-bottom:1px solid #eee">`;
-      for(let d=0; d<Math.floor(item.cantidad); d++) {
-         const thumb = item.detalles[d].imagen ? `<img src="${item.detalles[d].imagen}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${item.detalles[d].imagen}')">` : '';
-         html += `<div style="display:flex;gap:10px;margin-bottom:6px;align-items:center">
-             <span style="font-size:11px;font-weight:700;color:#666;width:20px">#${d+1}</span>
-             <label style="cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#e2e8f0;border-radius:4px;color:#64748b" title="Subir Foto">
-               📸
-               <input type="file" accept="image/jpeg, image/png, image/jpg" style="display:none" onchange="subirFotoSaldos(${i}, ${d}, this)">
-             </label>
-             <div id="thumb-${i}-${d}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center">${thumb}</div>
-             <input type="text" placeholder="Descripción obligatoria del artículo..." value="${(item.detalles[d].comentario || '').replace(/"/g, '&quot;')}" 
-                    onchange="solicitudItems[${i}].detalles[${d}].comentario = this.value"
-                    style="flex:1;border:1px solid #ccc;padding:4px 8px;font-size:11px;border-radius:4px">
-             <input type="number" placeholder="Precio" value="${item.detalles[d].precio || 0}"
-                    onchange="solicitudItems[${i}].detalles[${d}].precio = parseFloat(this.value)||0"
-                    style="width:90px;border:1px solid #ccc;padding:4px 8px;font-size:11px;border-radius:4px">
-         </div>`;
-      }
-      html += `</div></td></tr>`;
-    }
-    return html;
   }).join('');
 
   // Inyectar estilos del dropdown si no existen
@@ -429,54 +389,18 @@ async function guardarSolicitud() {
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
   if (solicitudItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
 
-  const isSaldos = ccDes === '999';
-  const isSalidaSaldos = ccOri === '999';
-
-  if (isSaldos) {
-    if (solicitudItems.some(i => i.detalles && i.detalles.some(d => !(d.comentario||'').trim()))) {
-      return alert('Debe proporcionar una descripción para CADA unidad de los insumos (Saldos Iniciales).');
-    }
-  }
-
-  let itemsToSave = [];
-  if (isSaldos) {
-    solicitudItems.forEach(item => {
-       if (item.detalles && item.detalles.length > 0) {
-         const ins = getInsumo(item.insumoId);
-         item.detalles.forEach(det => {
-            itemsToSave.push({
-               insumoId: item.insumoId,
-               nombre: ins ? ins.nombre : '',
-               unidad: ins ? ins.unidad : 'Pieza',
-               cantidad: 1,
-               precio: det.precio || 0,
-               comentario: det.comentario || '',
-               imagen: det.imagen || ''
-            });
-         });
-       }
-    });
-  } else if (isSalidaSaldos) {
-    itemsToSave = solicitudItems.map(i => {
-      const ins = getInsumo(i.insumoId);
-      return {
-        ...i,
-        nombre: ins ? ins.nombre : '',
-        unidad: ins ? ins.unidad : 'Pieza',
-        precio: 0,
-        comentario: ''
-      };
-    });
-  } else {
-    itemsToSave = solicitudItems.map(i => {
-      const ins = getInsumo(i.insumoId);
-      return {
-        ...i,
-        nombre: ins ? ins.nombre : '',
-        unidad: ins ? ins.unidad : 'Pieza'
-      };
-    });
-  }
+  const itemsToSave = solicitudItems.map(i => {
+    const ins = getInsumo(i.insumoId);
+    return {
+      insumoId: i.insumoId,
+      nombre: ins ? ins.nombre : '',
+      unidad: ins ? ins.unidad : 'Pieza',
+      cantidad: parseFloat(i.cantidad) || 0,
+      precio: 0,
+      comentario: (i.comentario || '').trim(),
+      imagen: i.imagen || ''
+    };
+  });
 
   const folio = genFolio(tipo);
   const t = {
@@ -551,7 +475,7 @@ async function guardarSolicitud() {
   }
 }
 
-async function subirFotoSaldos(i, d, input) {
+async function subirFotoItem(i, input) {
   if (!input.files || input.files.length === 0) return;
   const file = input.files[0];
   if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
@@ -559,8 +483,8 @@ async function subirFotoSaldos(i, d, input) {
     input.value = '';
     return;
   }
-  const thumbDiv = document.getElementById(`thumb-${i}-${d}`);
-  thumbDiv.innerHTML = '<span style="font-size:10px">⏳</span>';
+  const thumbDiv = document.getElementById(`thumb-${i}`);
+  if (thumbDiv) thumbDiv.innerHTML = '<span style="font-size:10px">⏳</span>';
   
   try {
     const b64 = await resizeAndCompressImage(file, 800);
@@ -578,12 +502,14 @@ async function subirFotoSaldos(i, d, input) {
     if (!res.ok) throw new Error('Error al subir');
     const data = await res.json();
     
-    solicitudItems[i].detalles[d].imagen = data.url;
-    thumbDiv.innerHTML = `<img src="${data.url}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${data.url}')">`;
+    solicitudItems[i].imagen = data.url;
+    if (thumbDiv) {
+      thumbDiv.innerHTML = `<img src="${data.url}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${data.url}')" title="Ver foto">`;
+    }
   } catch (err) {
     console.error(err);
     alert('Error al subir la imagen');
-    thumbDiv.innerHTML = '❌';
+    if (thumbDiv) thumbDiv.innerHTML = '❌';
   }
 }
 
