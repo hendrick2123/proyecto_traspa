@@ -221,7 +221,7 @@ function renderHistorialTable(list) {
     return '<div class="empty-state"><p>Sin movimientos</p><span>No se encontraron registros con los filtros seleccionados</span></div>';
   }
   const user = getUser();
-  const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador');
+  const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista');
 
   return `<table>
     <thead>
@@ -267,8 +267,8 @@ let _editItemsTemp = [];
 
 function modalEditarTraspaso(id) {
   const user = getUser();
-  if (!user || (user.rol !== 'residente' && user.rol !== 'administrador')) {
-    return alert('Solo los usuarios con rol Residente o Administrador pueden editar traspasos.');
+  if (!user || (user.rol !== 'residente' && user.rol !== 'administrador' && user.rol !== 'almacenista')) {
+    return alert('Solo los usuarios con rol Residente, Administrador o Monitor de control pueden editar traspasos.');
   }
 
   const t = S.traspasos.find(x => x.id === id);
