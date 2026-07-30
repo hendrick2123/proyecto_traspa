@@ -66,6 +66,7 @@ function renderHistorial() {
           <option value="pendiente_cordinador">Pend. Cordinador</option>
           <option value="pendiente">Pend. Residente</option>
           <option value="pre_autorizado">Pre-Autorizado</option>
+          <option value="mandado_editar">Mandado a Editar</option>
           <option value="autorizado">Autorizado</option>
           <option value="recibido">Recibido</option>
           <option value="devuelto_parcial">Dev. Parcial</option>
@@ -221,7 +222,7 @@ function renderHistorialTable(list) {
     return '<div class="empty-state"><p>Sin movimientos</p><span>No se encontraron registros con los filtros seleccionados</span></div>';
   }
   const user = getUser();
-  const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista');
+  const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista' || user.rol === 'control_obra');
 
   return `<table>
     <thead>
@@ -267,8 +268,9 @@ let _editItemsTemp = [];
 
 function modalEditarTraspaso(id) {
   const user = getUser();
-  if (!user || (user.rol !== 'residente' && user.rol !== 'administrador' && user.rol !== 'almacenista')) {
-    return alert('Solo los usuarios con rol Residente, Administrador o Monitor de control pueden editar traspasos.');
+  const allowedRoles = ['residente', 'administrador', 'almacenista', 'control_obra'];
+  if (!user || !allowedRoles.includes(user.rol)) {
+    return alert('Solo los usuarios con rol Residente, Control de Obra, Administrador o Monitor de control pueden editar traspasos.');
   }
 
   const t = S.traspasos.find(x => x.id === id);
@@ -276,7 +278,17 @@ function modalEditarTraspaso(id) {
 
   _editItemsTemp = (t.items || []).map(i => ({ ...i }));
 
+  const isMandadoEditar = (t.status === 'mandado_editar');
+  const canDevolverAEditar = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador') && !isMandadoEditar;
+
+  const alertHeader = isMandadoEditar ? `
+    <div class="alert alert-warning" style="margin-bottom:14px;background:#ffedd5;color:#c2410c;border:1px solid #fdba74;padding:10px 14px;border-radius:6px;font-size:12px">
+      <strong>⚠️ Traspaso Devuelto para Edición:</strong> Modifique los datos e insumos necesarios. Al guardar los cambios, el traspaso volverá a enviarse al circuito normal de autorización.
+    </div>
+  ` : '';
+
   const body = `
+    ${alertHeader}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
       <div class="form-group">
         <label>Folio</label>
@@ -318,11 +330,40 @@ function modalEditarTraspaso(id) {
 
   const footer = `
     <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" id="btn-guardar-edit" onclick="guardarEdicionTraspaso('${id}')">💾 Guardar Cambios</button>
+    ${canDevolverAEditar ? `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="solicitarEdicionTraspaso('${id}')">↩️ Mandar a Editar al Creador</button>` : ''}
+    <button class="btn btn-primary" id="btn-guardar-edit" onclick="guardarEdicionTraspaso('${id}')">💾 ${isMandadoEditar ? 'Guardar y Reenviar a Proceso' : 'Guardar Cambios'}</button>
   `;
 
   openModal(`Editar Traspaso · ${t.folio}`, body, footer);
   _renderEditItemsTbody();
+}
+
+async function solicitarEdicionTraspaso(id) {
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  const motivo = prompt(`Devolver el traspaso ${t.folio} a ${t.solicitante || 'su creador'} para edición.\n\nIngrese motivo u observaciones (opcional):`);
+  if (motivo === null) return;
+
+  try {
+    t.status = 'mandado_editar';
+    if (motivo.trim()) {
+      const nota = `[Devuelto para edición]: ${motivo.trim()}`;
+      t.observaciones = t.observaciones ? `${t.observaciones}\n${nota}` : nota;
+    }
+
+    await saveState('traspasos');
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
+
+    closeModal();
+    cargarHistorial();
+    alert(`El traspaso ${t.folio} fue marcado como "Mandado a Editar" y devuelto al creador.`);
+  } catch (err) {
+    console.error(err);
+    alert('Error al devolver el traspaso: ' + (err.message || err));
+  }
 }
 
 function _agregarEditItemTemp() {
@@ -416,9 +457,27 @@ async function guardarEdicionTraspaso(id) {
   }
 
   try {
+    const wasMandadoEditar = (t.status === 'mandado_editar');
+
     t.solicitante = sol;
     t.observaciones = obs;
     t.items = _editItemsTemp;
+
+    if (wasMandadoEditar) {
+      t.status = 'pendiente_cordinador';
+      t.autorizadorCordinador = null;
+      t.fechaAutorizacionCordinador = null;
+      t.comentarioAuthCordinador = null;
+      t.autorizador = null;
+      t.fechaAutorizacion = null;
+      t.comentarioAuth = null;
+      t.autorizador2 = null;
+      t.fechaAutorizacion2 = null;
+      t.comentarioAuth2 = null;
+      t.receptor = null;
+      t.fechaRecepcion = null;
+      t.comentarioRec = null;
+    }
 
     await saveState('traspasos');
     if (typeof fetchState === 'function') {
@@ -427,6 +486,9 @@ async function guardarEdicionTraspaso(id) {
 
     closeModal();
     cargarHistorial();
+    if (wasMandadoEditar) {
+      alert(`El traspaso ${t.folio} fue actualizado y reenviado al proceso de autorización (Pendiente Cordinador).`);
+    }
   } catch (err) {
     console.error(err);
     alert('Error al guardar cambios: ' + (err.message || err));

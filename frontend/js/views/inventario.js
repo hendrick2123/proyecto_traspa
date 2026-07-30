@@ -321,7 +321,7 @@ async function exportarExcelInventario() {
         const diffTime = fechaFin - fechaInicio;
         const diasTranscurridos = diffTime > 0 ? Math.floor(diffTime / (1000 * 60 * 60 * 24)) : 0;
 
-        const statusLabels = { pendiente_cordinador:'Pend. Cordinador', pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total' };
+        const statusLabels = { pendiente_cordinador:'Pend. Cordinador', pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total', mandado_editar:'Mandado a Editar' };
         const statusLabel = statusLabels[t.status] || t.status;
 
         rows.push({
