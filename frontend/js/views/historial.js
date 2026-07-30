@@ -330,7 +330,7 @@ function modalEditarTraspaso(id) {
 
   const footer = `
     <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-    ${canDevolverAEditar ? `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="solicitarEdicionTraspaso('${id}')">↩️ Mandar a Editar al Creador</button>` : ''}
+    ${canDevolverAEditar ? `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="solicitarEdicionTraspaso('${id}')">✏️ Editar</button>` : ''}
     <button class="btn btn-primary" id="btn-guardar-edit" onclick="guardarEdicionTraspaso('${id}')">💾 ${isMandadoEditar ? 'Guardar y Reenviar a Proceso' : 'Guardar Cambios'}</button>
   `;
 
@@ -371,6 +371,35 @@ function _agregarEditItemTemp() {
   _renderEditItemsTbody();
 }
 
+function _buildInsumoOptionsForEdit(selectedInsumoId, currentNombre) {
+  let found = false;
+  const opts = (S.insumos || []).map(ins => {
+    const isSelected = String(ins.id) === String(selectedInsumoId) || String(ins.clave) === String(selectedInsumoId);
+    if (isSelected) found = true;
+    return `<option value="${ins.id}" ${isSelected ? 'selected' : ''}>${ins.clave ? ins.clave + ' · ' : ''}${ins.nombre}</option>`;
+  });
+
+  if (!found && (selectedInsumoId || currentNombre)) {
+    const label = currentNombre ? ((selectedInsumoId && selectedInsumoId !== currentNombre ? selectedInsumoId + ' · ' : '') + currentNombre) : selectedInsumoId;
+    const val = selectedInsumoId || currentNombre;
+    opts.unshift(`<option value="${val}" selected>${label}</option>`);
+  }
+
+  opts.unshift('<option value="">-- Seleccionar insumo --</option>');
+  return opts.join('');
+}
+
+function _onEditInsumoChange(i, val) {
+  if (!_editItemsTemp[i]) return;
+  _editItemsTemp[i].insumoId = val;
+  const ins = val ? getInsumo(val) : null;
+  if (ins) {
+    _editItemsTemp[i].nombre = (ins.nombre && ins.nombre !== val) ? ins.nombre : (_editItemsTemp[i].nombre || val);
+    _editItemsTemp[i].unidad = (ins.unidad && ins.unidad !== '—') ? ins.unidad : (_editItemsTemp[i].unidad || 'Pieza');
+  }
+  _renderEditItemsTbody();
+}
+
 function _renderEditItemsTbody() {
   const tbody = document.getElementById('edit-items-tbody');
   if (!tbody) return;
@@ -382,17 +411,19 @@ function _renderEditItemsTbody() {
 
   tbody.innerHTML = _editItemsTemp.map((item, i) => {
     const ins = item.insumoId ? getInsumo(item.insumoId) : null;
-    const displayVal = ins ? ins.clave + ' · ' + ins.nombre : (item.nombre || '');
     const thumb = item.imagen ? `<img src="${item.imagen}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${item.imagen}')" title="Ver foto">` : '';
+    const unidadText = ins && ins.unidad !== '—' ? ins.unidad : (item.unidad || 'Pza');
 
     return `<tr>
       <td>
-        <input type="text" value="${displayVal.replace(/"/g, '&quot;')}" readonly style="background:#f8fafc;border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%" title="${displayVal}">
+        <select onchange="_onEditInsumoChange(${i}, this.value)" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
+          ${_buildInsumoOptionsForEdit(item.insumoId, item.nombre)}
+        </select>
       </td>
       <td>
-        <input type="number" min="0.01" step="any" value="${item.cantidad}" onchange="_editItemsTemp[${i}].cantidad=parseFloat(this.value)||0" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
+        <input type="number" min="0.01" step="any" value="${item.cantidad}" oninput="_editItemsTemp[${i}].cantidad=parseFloat(this.value)||0" onchange="_editItemsTemp[${i}].cantidad=parseFloat(this.value)||0" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
       </td>
-      <td style="font-size:11px;color:#666">${ins ? ins.unidad : (item.unidad || 'Pza')}</td>
+      <td style="font-size:11px;color:#666">${unidadText}</td>
       <td style="text-align:center">
         <div style="display:flex;align-items:center;justify-content:center;gap:4px">
           <label style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;font-size:12px" title="Cambiar Foto">
@@ -403,7 +434,7 @@ function _renderEditItemsTbody() {
         </div>
       </td>
       <td>
-        <input type="text" value="${(item.comentario || '').replace(/"/g, '&quot;')}" onchange="_editItemsTemp[${i}].comentario=this.value" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
+        <input type="text" value="${(item.comentario || '').replace(/"/g, '&quot;')}" oninput="_editItemsTemp[${i}].comentario=this.value" onchange="_editItemsTemp[${i}].comentario=this.value" style="border:1px solid #ddd;padding:4px 6px;font-size:11px;border-radius:4px;width:100%">
       </td>
       <td style="text-align:center">
         <button onclick="_editItemsTemp.splice(${i},1);_renderEditItemsTbody()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;font-weight:700">×</button>
