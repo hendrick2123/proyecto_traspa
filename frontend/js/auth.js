@@ -133,15 +133,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Interceptor global de fetch para inyectar token de sesión en la cabecera Authorization
+// Interceptor global de fetch para inyectar token de sesión y timeout de 15 segundos
 const originalFetch = window.fetch;
 window.fetch = function (url, options) {
   options = options || {};
-  
+
   // No inyectar token si la petición es al login o a las APIs públicas
   const isUrlString = typeof url === 'string';
   const isPublicApi = isUrlString && (url.includes('/api/auth/login') || url.includes('/api/public/'));
-  
+
   if (isPublicApi) {
     return originalFetch(url, options);
   }
@@ -158,14 +158,33 @@ window.fetch = function (url, options) {
     }
   }
 
-  return originalFetch(url, options).then(response => {
-    // Si el backend responde 401 Unauthorized, redirigir automáticamente al login
-    if (response.status === 401) {
-      sessionStorage.removeItem('gu_user');
-      sessionStorage.removeItem('gu_token');
-      window.location.href = 'login.html';
-    }
-    return response;
-  });
+  // ── Timeout de 15 segundos ────────────────────────────────────────────────
+  // Si el servidor no responde en 15 segundos, la promesa se rechaza con un
+  // error claro en lugar de quedarse cargando indefinidamente.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  if (!options.signal) {
+    options.signal = controller.signal;
+  }
+
+  return originalFetch(url, options)
+    .then(response => {
+      clearTimeout(timeoutId);
+      // Si el backend responde 401 Unauthorized, redirigir automáticamente al login
+      if (response.status === 401) {
+        sessionStorage.removeItem('gu_user');
+        sessionStorage.removeItem('gu_token');
+        window.location.href = 'login.html';
+      }
+      return response;
+    })
+    .catch(err => {
+      clearTimeout(timeoutId);
+      // Error de timeout o red — lanzar error descriptivo
+      if (err.name === 'AbortError') {
+        throw new Error('El servidor no respondió. Verifica tu conexión e intenta de nuevo.');
+      }
+      throw err;
+    });
 };
 

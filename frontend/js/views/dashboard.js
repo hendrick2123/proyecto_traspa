@@ -30,7 +30,7 @@ function renderDashboard() {
   const garantias  = traspaFiltrados.filter(t => t.tipo === 'GAR').length;
 
   const recent = [...traspaFiltrados]
-    .sort((a, b) => b.fechaSolicitud.localeCompare(a.fechaSolicitud))
+    .sort((a, b) => (b.fechaSolicitud || '').localeCompare(a.fechaSolicitud || ''))
     .slice(0, 8);
 
   const analytics = buildAnalytics(traspaFiltrados);

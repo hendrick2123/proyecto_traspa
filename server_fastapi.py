@@ -23,7 +23,8 @@ PORT = 8000
 FRONTEND_DIR = "frontend"
 DB_FILE = "db.json"
 
-from db_config import DB_CONFIG, get_db_connection
+from db_config import DB_CONFIG, get_db_connection, release_db_connection, get_db_connection_ctx
+from app.core.security import check_geo_location_async, check_browser
 
 PORT = int(os.environ.get("PORT", 8000))
 
@@ -108,17 +109,38 @@ def save_sessions():
     except Exception as e:
         print(f"Warning: Could not save sessions: {e}", file=sys.stderr, flush=True)
 
-# ─── Catalog Cache ────────────────────────────────────────────────────────────
+# ─── Catalog Cache with TTL ───────────────────────────────────────────────────
+CATALOG_CACHE_TTL = int(os.environ.get("CATALOG_CACHE_TTL", 300))  # 5 minutos por defecto
 CATALOG_CACHE: dict = {
-    "empresas": None,
-    "centros_costo": None,
-    "desarrollos": None,
-    "insumos": None
+    "empresas": {"data": None, "ts": 0},
+    "centros_costo": {"data": None, "ts": 0},
+    "desarrollos": {"data": None, "ts": 0},
+    "insumos": {"data": None, "ts": 0}
 }
 
+def _cache_get(key: str):
+    """Devuelve datos cacheados si no han expirado, o None."""
+    entry = CATALOG_CACHE.get(key)
+    if entry and entry["data"] is not None and (time.time() - entry["ts"]) < CATALOG_CACHE_TTL:
+        return entry["data"]
+    return None
+
+def _cache_set(key: str, data):
+    """Almacena datos en caché con timestamp."""
+    CATALOG_CACHE[key] = {"data": data, "ts": time.time()}
+
+def invalidate_catalog_cache(key: str = None):
+    """Invalida un catálogo específico o todos si key=None."""
+    if key:
+        CATALOG_CACHE[key] = {"data": None, "ts": 0}
+    else:
+        for k in CATALOG_CACHE:
+            CATALOG_CACHE[k] = {"data": None, "ts": 0}
+
 def get_db_empresas():
-    if CATALOG_CACHE["empresas"] is not None:
-        return CATALOG_CACHE["empresas"]
+    cached = _cache_get("empresas")
+    if cached is not None:
+        return cached
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
@@ -127,11 +149,11 @@ def get_db_empresas():
         lst = [{"id": r[0], "nombre": r[1], "rfc": ""} for r in rows] if rows else EMPRESAS_DEFAULT.copy()
         if not any(e["id"] == "99" for e in lst):
             lst.append({"id": "99", "nombre": "Almacen", "rfc": ""})
-        CATALOG_CACHE["empresas"] = lst
+        _cache_set("empresas", lst)
         return lst
     except Exception as e:
         print(f"DB Warning empresas: {e}", file=sys.stderr, flush=True)
-        CATALOG_CACHE["empresas"] = EMPRESAS_DEFAULT
+        _cache_set("empresas", EMPRESAS_DEFAULT)
         return EMPRESAS_DEFAULT
     finally:
         if conn:
@@ -139,8 +161,9 @@ def get_db_empresas():
             except: pass
 
 def get_db_centros_costo():
-    if CATALOG_CACHE["centros_costo"] is not None:
-        return CATALOG_CACHE["centros_costo"]
+    cached = _cache_get("centros_costo")
+    if cached is not None:
+        return cached
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
@@ -161,11 +184,11 @@ def get_db_centros_costo():
         lst = [{"id": r[0], "empresaId": r[1], "nombre": r[2], "direccion": ""} for r in rows] if rows else CC_DEFAULT.copy()
         if not any(c["id"] == "999" for c in lst):
             lst.append({"id": "999", "empresaId": "99", "nombre": "Almacen", "direccion": ""})
-        CATALOG_CACHE["centros_costo"] = lst
+        _cache_set("centros_costo", lst)
         return lst
     except Exception as e:
         print(f"DB Warning centros_costo: {e}", file=sys.stderr, flush=True)
-        CATALOG_CACHE["centros_costo"] = CC_DEFAULT
+        _cache_set("centros_costo", CC_DEFAULT)
         return CC_DEFAULT
     finally:
         if conn:
@@ -173,18 +196,20 @@ def get_db_centros_costo():
             except: pass
 
 def get_db_desarrollos():
-    if CATALOG_CACHE["desarrollos"] is not None:
-        return CATALOG_CACHE["desarrollos"]
+    cached = _cache_get("desarrollos")
+    if cached is not None:
+        return cached
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("SELECT DISTINCT id_desarrollo, descripcion_desarrollo FROM testing.prof_desarrollos ORDER BY descripcion_desarrollo;")
         rows = cur.fetchall(); cur.close()
-        CATALOG_CACHE["desarrollos"] = [{"id": r[0], "nombre": r[1]} for r in rows] if rows else DESARROLLOS_DEFAULT
-        return CATALOG_CACHE["desarrollos"]
+        data = [{"id": r[0], "nombre": r[1]} for r in rows] if rows else DESARROLLOS_DEFAULT
+        _cache_set("desarrollos", data)
+        return data
     except Exception as e:
         print(f"DB Warning desarrollos: {e}", file=sys.stderr, flush=True)
-        CATALOG_CACHE["desarrollos"] = DESARROLLOS_DEFAULT
+        _cache_set("desarrollos", DESARROLLOS_DEFAULT)
         return DESARROLLOS_DEFAULT
     finally:
         if conn:
@@ -192,8 +217,9 @@ def get_db_desarrollos():
             except: pass
 
 def get_db_insumos():
-    if CATALOG_CACHE["insumos"] is not None:
-        return CATALOG_CACHE["insumos"]
+    cached = _cache_get("insumos")
+    if cached is not None:
+        return cached
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
@@ -203,11 +229,12 @@ def get_db_insumos():
             ORDER BY ins.descripcion;
         """)
         rows = cur.fetchall(); cur.close()
-        CATALOG_CACHE["insumos"] = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material"} for r in rows] if rows else INSUMOS_DEFAULT
-        return CATALOG_CACHE["insumos"]
+        data = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material"} for r in rows] if rows else INSUMOS_DEFAULT
+        _cache_set("insumos", data)
+        return data
     except Exception as e:
         print(f"DB Warning insumos: {e}", file=sys.stderr, flush=True)
-        CATALOG_CACHE["insumos"] = INSUMOS_DEFAULT
+        _cache_set("insumos", INSUMOS_DEFAULT)
         return INSUMOS_DEFAULT
     finally:
         if conn:
@@ -720,7 +747,7 @@ async def access_restriction_middleware(request: Request, call_next):
     if GEO_RESTRICTION_ENABLED and request.method != "OPTIONS":
         client_ip = request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.client.host if request.client else "127.0.0.1"))
         client_ip = client_ip.split(",")[0].strip()
-        ok, geo_info = check_geo_location(client_ip)
+        ok, geo_info = await check_geo_location_async(client_ip)
         if not ok:
             html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Acceso Restringido</title>
             <style>body{{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f0f23;color:#fff;margin:0}}
@@ -773,6 +800,7 @@ async def api_post_empresas(request: Request, user: dict = Depends(get_current_u
     local_db["empresas"] = filtered_emp
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(local_db, f, indent=2, ensure_ascii=False)
+    invalidate_catalog_cache("empresas")
     return {"status": "success"}
 
 # ─── Centros de Costo REST Endpoints ───
@@ -806,6 +834,7 @@ async def api_post_centros_costo(request: Request, user: dict = Depends(get_curr
     local_db["centrosCosto"] = filtered_ccs
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(local_db, f, indent=2, ensure_ascii=False)
+    invalidate_catalog_cache("centros_costo")
     return {"status": "success"}
 
 # ─── Insumos REST Endpoints ───
@@ -839,7 +868,13 @@ async def api_post_insumos(request: Request, user: dict = Depends(get_current_us
     local_db["insumos"] = filtered_ins
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(local_db, f, indent=2, ensure_ascii=False)
+    invalidate_catalog_cache("insumos")
     return {"status": "success"}
+
+@app.post("/api/admin/cache/clear")
+def api_clear_cache(user: dict = Depends(get_current_user)):
+    invalidate_catalog_cache()
+    return {"status": "success", "message": "Caché de catálogos limpiado correctamente."}
 
 # ─── Desarrollos REST Endpoints ───
 @app.get("/api/desarrollos")
@@ -873,6 +908,53 @@ def api_get_traspasos(
         user=user
     )
     return {"traspasos": traspasos, "total": total, "page": page, "limit": limit}
+
+@app.get("/api/traspasos/stats")
+def api_get_traspasos_stats(user: dict = Depends(get_current_user)):
+    """Devuelve conteos de traspasos agrupados por estado y tipo, directo de la BD."""
+    conn = None
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+
+        # Construir filtro de permisos según rol
+        where_clauses = []
+        params = []
+        if user.get("rol", "") not in ("administrador", "residente", "cordinador"):
+            user_cc_ids = [c.strip() for c in (user.get("cc_ids") or "").split(",") if c.strip()]
+            user_empresa_ids = [e.strip() for e in (user.get("empresa_id") or "").split(",") if e.strip()]
+            if user_cc_ids:
+                where_clauses.append("(cc_origen IN %s OR cc_destino IN %s OR solicitante = %s)")
+                params.extend([tuple(user_cc_ids), tuple(user_cc_ids), user.get("nombre", "")])
+            elif user_empresa_ids:
+                where_clauses.append("(empresa_origen IN %s OR empresa_destino IN %s)")
+                params.extend([tuple(user_empresa_ids), tuple(user_empresa_ids)])
+
+        where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        # Conteos por estado
+        cur.execute(f"SELECT estado, COUNT(*) FROM testing.solicitudes_traspasos_v2{where_sql} GROUP BY estado;", params)
+        by_status = {row[0] or "pendiente": row[1] for row in cur.fetchall()}
+
+        # Conteos por tipo
+        cur.execute(f"SELECT tipo_traspaso, COUNT(*) FROM testing.solicitudes_traspasos_v2{where_sql} GROUP BY tipo_traspaso;", params)
+        by_tipo = {row[0]: row[1] for row in cur.fetchall()}
+
+        # Total general
+        total = sum(by_status.values())
+
+        cur.close()
+        return {
+            "total": total,
+            "byStatus": by_status,
+            "byTipo": by_tipo
+        }
+    except Exception as e:
+        print(f"DB Error traspasos/stats: {e}", file=sys.stderr, flush=True)
+        return {"total": 0, "byStatus": {}, "byTipo": {}}
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 @app.post("/api/traspasos")
 async def api_post_traspasos(request: Request, user: dict = Depends(get_current_user)):
@@ -1034,6 +1116,10 @@ def api_get_users(user: dict = Depends(get_current_user)):
             try: conn.close()
             except: pass
 
+LOGIN_ATTEMPTS: dict = {}
+MAX_LOGIN_ATTEMPTS = 3
+LOCKOUT_DURATION_SECONDS = 300  # 5 minutos
+
 @app.post("/api/auth/login")
 async def api_login(request: Request):
     body     = await request.json()
@@ -1041,6 +1127,20 @@ async def api_login(request: Request):
     password = body.get("password","")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos.")
+        
+    username_key = username.lower()
+    now = time.time()
+    attempt_data = LOGIN_ATTEMPTS.get(username_key, {"attempts": 0, "lockout_until": 0})
+    
+    # Verificar si está en periodo de bloqueo
+    if attempt_data["lockout_until"] > now:
+        remaining_seconds = int(attempt_data["lockout_until"] - now)
+        remaining_minutes = max(1, (remaining_seconds + 59) // 60)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Cuenta bloqueada por seguridad. Intenta de nuevo en {remaining_minutes} minuto(s)."
+        )
+
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
@@ -1052,7 +1152,22 @@ async def api_login(request: Request):
         row = cur.fetchone()
 
         if not row:
-            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+            # Registrar intento fallido
+            attempt_data["attempts"] += 1
+            if attempt_data["attempts"] >= MAX_LOGIN_ATTEMPTS:
+                attempt_data["lockout_until"] = now + LOCKOUT_DURATION_SECONDS
+                LOGIN_ATTEMPTS[username_key] = attempt_data
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Demasiados intentos fallidos. Tu cuenta ha sido bloqueada por {LOCKOUT_DURATION_SECONDS // 60} minutos."
+                )
+            else:
+                LOGIN_ATTEMPTS[username_key] = attempt_data
+                attempts_left = MAX_LOGIN_ATTEMPTS - attempt_data["attempts"]
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Usuario o contraseña incorrectos. Te quedan {attempts_left} intento(s)."
+                )
 
         stored_hash = row[8]
         password_valid = False
@@ -1068,7 +1183,22 @@ async def api_login(request: Request):
                 needs_upgrade = True  # Mark for automatic upgrade to bcrypt
 
         if not password_valid:
-            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+            # Registrar intento fallido
+            attempt_data["attempts"] += 1
+            if attempt_data["attempts"] >= MAX_LOGIN_ATTEMPTS:
+                attempt_data["lockout_until"] = now + LOCKOUT_DURATION_SECONDS
+                LOGIN_ATTEMPTS[username_key] = attempt_data
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Demasiados intentos fallidos. Tu cuenta ha sido bloqueada por {LOCKOUT_DURATION_SECONDS // 60} minutos."
+                )
+            else:
+                LOGIN_ATTEMPTS[username_key] = attempt_data
+                attempts_left = MAX_LOGIN_ATTEMPTS - attempt_data["attempts"]
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Usuario o contraseña incorrectos. Te quedan {attempts_left} intento(s)."
+                )
 
         if not row[5]:
             raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
@@ -1085,6 +1215,10 @@ async def api_login(request: Request):
 
         cur.close()
 
+        # Si el login es exitoso, limpiamos el contador de intentos fallidos
+        if username_key in LOGIN_ATTEMPTS:
+            del LOGIN_ATTEMPTS[username_key]
+
         user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
         token = hashlib.sha256(os.urandom(16)).hexdigest()
         # Expira en 8 horas (28800 segundos)
@@ -1098,7 +1232,10 @@ async def api_login(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+        print(f"[AUTH ERROR] Error en api_login: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error interno: {e}")
     finally:
         if conn:
             try: conn.close()

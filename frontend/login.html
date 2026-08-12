@@ -183,8 +183,8 @@ async function doLogin() {
     });
     const data = await res.json();
 
-    if (!res.ok || data.error) {
-      errEl.textContent = data.error || 'Usuario o contraseña incorrectos.';
+    if (!res.ok || data.error || data.detail) {
+      errEl.textContent = data.detail || data.error || 'Usuario o contraseña incorrectos.';
       errEl.style.display = 'block';
     } else {
       sessionStorage.setItem('gu_user', JSON.stringify(data.user));

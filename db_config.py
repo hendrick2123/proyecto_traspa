@@ -1,6 +1,8 @@
 import os
 import sys
 import psycopg2
+from psycopg2 import pool
+from contextlib import contextmanager
 
 def load_dotenv(filepath=None):
     if filepath is None:
@@ -39,16 +41,74 @@ DB_CONFIG = {
     "options":             "-c statement_timeout=60000"
 }
 
+# Inicialización de un pool de conexiones para soportar alta concurrencia
+# maxconn reducido a 10 por defecto (configurable) para evitar agotar conexiones
+# cuando uvicorn corre con múltiples workers (cada worker tiene su propio pool)
+DB_MAX_CONN = int(os.environ.get("DB_MAX_CONN", 10))
+try:
+    connection_pool = psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=DB_MAX_CONN,
+        **DB_CONFIG
+    )
+except (Exception, psycopg2.DatabaseError) as error:
+    print("Error al inicializar el pool de conexiones:", error, file=sys.stderr)
+    connection_pool = None
+
+@contextmanager
+def get_db_connection_ctx():
+    """Context manager para obtener una conexión del pool y devolverla automáticamente."""
+    conn = None
+    try:
+        if connection_pool:
+            conn = connection_pool.getconn()
+        else:
+            conn = psycopg2.connect(**DB_CONFIG)
+        yield conn
+    finally:
+        if conn and connection_pool:
+            connection_pool.putconn(conn)
+
+class PooledConnectionWrapper:
+    def __init__(self, conn, pool_obj):
+        self._conn = conn
+        self._pool = pool_obj
+
+    def close(self):
+        if self._pool and self._conn:
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                pass
+
+    def __getattr__(self, item):
+        return getattr(self._conn, item)
+
 def get_db_connection(retries=3):
+    """
+    Mantiene compatibilidad hacia atrás con scripts existentes.
+    Obtiene una conexión del pool envuelta en PooledConnectionWrapper para que conn.close()
+    devuelva la conexión al pool de forma segura.
+    """
     last_err = None
     for attempt in range(retries):
         try:
-            conn = psycopg2.connect(**DB_CONFIG)
-            return conn
+            if connection_pool:
+                raw_conn = connection_pool.getconn()
+                return PooledConnectionWrapper(raw_conn, connection_pool)
+            else:
+                return psycopg2.connect(**DB_CONFIG)
         except Exception as e:
             last_err = e
-            print(f"[DB WARN] Intento {attempt + 1}/{retries} de conexión falló: {e}", file=sys.stderr, flush=True)
+            print(f"[DB WARN] Intento {attempt + 1}/{retries} falló: {e}", file=sys.stderr, flush=True)
             if attempt < retries - 1:
                 import time
                 time.sleep(1)
     raise last_err
+
+def release_db_connection(conn):
+    """Ayudante para código legacy que necesita devolver la conexión manualmente."""
+    if connection_pool and conn:
+        connection_pool.putconn(conn)
+    elif conn:
+        conn.close()
