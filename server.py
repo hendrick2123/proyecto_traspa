@@ -525,6 +525,16 @@ def save_db_traspaso(t, conn=None):
 
         is_update = "_dbId" in t
 
+        if not is_update:
+            folio_str = t.get("folio", "")
+            if folio_str:
+                cur.execute('SELECT id_solicitud, solicitante FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
+                row = cur.fetchone()
+                if row and row[1] == t.get("solicitante", ""):
+                    is_update = True
+                    t["_dbId"] = row[0]
+                    print(f"Resend detectado para folio {folio_str}, aplicando como UPDATE", flush=True)
+
         if is_update:
             # UPDATE – actualizar estado y campos de autorización / recepción
             sol_id = t["_dbId"]
