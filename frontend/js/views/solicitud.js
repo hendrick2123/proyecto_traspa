@@ -383,7 +383,7 @@ async function guardarSolicitud() {
   if (!sol)                                             return alert('Ingrese el nombre del solicitante');
   if (!ccOri)                                           return alert('Seleccione el centro de costo de origen');
   if (!ccDes)                                           return alert('Seleccione el centro de costo de destino');
-  if (ccOri === ccDes && ccOri !== '999')                return alert('El origen y destino no pueden ser iguales');
+  if (ccOri === ccDes && ccOri !== '999' && ccOri !== '998') return alert('El origen y destino no pueden ser iguales');
 
   if (solicitudItems.length === 0)                      return alert('Agregue al menos un insumo');
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
@@ -402,12 +402,17 @@ async function guardarSolicitud() {
     };
   });
 
+  // Determinar si el usuario es postventa (flujo directo sin autorización)
+  const currentUser = getUser();
+  const isPostventa = currentUser && currentUser.rol === 'postventa';
+  const fechaAhora = now();
+
   const folio = genFolio(tipo);
   const t = {
     id:               'T' + Date.now(),
     folio,
     tipo,
-    status:           'pendiente_cordinador',
+    status:           isPostventa ? 'recibido' : 'pendiente_cordinador',
     solicitante:      sol,
     empresaOrigen:    empOri,
     ccOrigen:         ccOri,
@@ -415,16 +420,16 @@ async function guardarSolicitud() {
     ccDestino:        ccDes,
     observaciones:    obs,
     items:            itemsToSave,
-    fechaSolicitud:   now(),
-    autorizadorCordinador: null,
-    fechaAutorizacionCordinador: null,
-    comentarioAuthCordinador: null,
-    autorizador:      null,
-    fechaAutorizacion:null,
-    comentarioAuth:   null,
-    receptor:         null,
-    fechaRecepcion:   null,
-    comentarioRec:    null,
+    fechaSolicitud:   fechaAhora,
+    autorizadorCordinador: isPostventa ? 'Auto Post-Venta' : null,
+    fechaAutorizacionCordinador: isPostventa ? fechaAhora : null,
+    comentarioAuthCordinador: isPostventa ? 'Aprobado automáticamente (Post-Venta)' : null,
+    autorizador:      isPostventa ? 'Auto Post-Venta' : null,
+    fechaAutorizacion: isPostventa ? fechaAhora : null,
+    comentarioAuth:   isPostventa ? 'Aprobado automáticamente (Post-Venta)' : null,
+    receptor:         isPostventa ? sol : null,
+    fechaRecepcion:   isPostventa ? fechaAhora : null,
+    comentarioRec:    isPostventa ? 'Recibido automáticamente (Post-Venta)' : null,
   };
 
   const btn = document.querySelector('button[onclick="guardarSolicitud()"]');
@@ -435,7 +440,7 @@ async function guardarSolicitud() {
 
   try {
     S.traspasos.push(t);
-    await saveState('traspasos');
+    await saveState('traspasos', t);
     if (typeof fetchState === 'function') {
       await fetchState();
     }
@@ -450,16 +455,16 @@ async function guardarSolicitud() {
         <div style="width:60px;height:60px;background:var(--green-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
           <svg fill="none" viewBox="0 0 24 24" stroke="var(--green)" style="width:32px;height:32px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
         </div>
-        <div style="font-size:20px;font-weight:800;margin-bottom:8px">¡Solicitud Generada!</div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:8px">${isPostventa ? '¡Solicitud Registrada!' : '¡Solicitud Generada!'}</div>
         <div style="font-size:26px;font-weight:900;color:var(--green);margin-bottom:4px">${finalFolio}</div>
-        <div style="color:#888;font-size:13px;margin-bottom:24px">La solicitud está pendiente de autorización</div>
+        <div style="color:#888;font-size:13px;margin-bottom:24px">${isPostventa ? 'El movimiento ha sido registrado directamente' : 'La solicitud está pendiente de autorización'}</div>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="imprimirTraspaso('${finalId}')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Imprimir Solicitud
           </button>
           <button class="btn btn-secondary" onclick="navigate('nueva-solicitud')">Nueva Solicitud</button>
-          <button class="btn btn-secondary" onclick="navigate('autorizacion')">Ir a Autorización</button>
+          ${isPostventa ? '<button class="btn btn-secondary" onclick="navigate(\'historial\')">Ir al Historial</button>' : '<button class="btn btn-secondary" onclick="navigate(\'autorizacion\')">Ir a Autorización</button>'}
         </div>
       </div>
     </div>`;

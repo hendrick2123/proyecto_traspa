@@ -125,7 +125,7 @@ function doRevertir(id) {
   const btnSubmit = document.querySelector('.modal-overlay .btn-danger');
   if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.textContent = 'Guardando...'; }
 
-  saveState('traspasos')
+  saveState('traspasos', t)
     .then(() => {
       closeModal();
       _renderRecepcionContent();
@@ -178,7 +178,7 @@ function doRecibir(id) {
   t.receptor       = nombre;
   t.fechaRecepcion = now();
   t.comentarioRec  = document.getElementById('rxr-comment').value.trim();
-  saveState('traspasos');
+  saveState('traspasos', t);
   closeModal();
 
   openModal(

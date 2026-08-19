@@ -194,7 +194,7 @@ function doAutorizar(id) {
     btnSubmit.textContent = 'Guardando...';
   }
 
-  saveState('traspasos')
+  saveState('traspasos', t)
     .then(() => {
       closeModal();
 
@@ -342,7 +342,7 @@ function doRechazar(id) {
     btnSubmit.textContent = 'Guardando...';
   }
 
-  saveState('traspasos')
+  saveState('traspasos', t)
     .then(() => {
       closeModal();
       renderAutorizacion();

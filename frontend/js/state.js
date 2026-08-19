@@ -94,7 +94,7 @@ function fetchTraspasosPaginated({ page = 1, limit = 25, status = '', tipo = '',
     });
 }
 
-function saveState(resource) {
+function saveState(resource, singleItem = null) {
   try {
     localStorage.setItem('gurbania_traspasos', JSON.stringify(S));
   } catch (e) {}
@@ -133,10 +133,11 @@ function saveState(resource) {
       return res.json();
     });
   } else if (resource === 'traspasos') {
+    const listToSend = singleItem ? (Array.isArray(singleItem) ? singleItem : [singleItem]) : S.traspasos;
     return fetch(API_BASE + '/api/traspasos', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ traspasos: S.traspasos })
+      body: JSON.stringify({ traspasos: listToSend })
     }).then(res => {
       if (!res.ok) throw new Error('Error al guardar traspasos.');
       return res.json();

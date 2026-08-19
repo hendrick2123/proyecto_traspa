@@ -45,6 +45,7 @@ async function loadUsuarios() {
       almacenista: 'Monitor de control',
       control_obra: 'Control de Obra',
       residente: 'Residente',
+      postventa: 'Post-Venta',
       administrador: 'Administrador'
     };
 
@@ -52,6 +53,7 @@ async function loadUsuarios() {
       almacenista: 'badge-draft',
       control_obra: 'badge-authorized',
       residente: 'badge-loan',
+      postventa: 'badge-preauthorized',
       administrador: 'badge-received'
     };
 
@@ -173,6 +175,7 @@ function editUsuario(id, rolActual, activoActual, empresaActual, nombreActual, c
         <option value="almacenista"   ${rolActual === 'almacenista' ? 'selected' : ''}>&#127959;&#65039; Monitor de control</option>
         <option value="control_obra"  ${rolActual === 'control_obra' ? 'selected' : ''}>&#128203; Control de Obra</option>
         <option value="residente"     ${rolActual === 'residente' ? 'selected' : ''}>&#127968; Residente</option>
+        <option value="postventa"     ${rolActual === 'postventa' ? 'selected' : ''}>&#128230; Post-Venta</option>
         <option value="administrador" ${rolActual === 'administrador' ? 'selected' : ''}>&#128273; Administrador</option>
       </select>
     </div>

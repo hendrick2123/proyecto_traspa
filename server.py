@@ -354,6 +354,8 @@ def get_db_empresas():
         empresas_list = [{"id": r[0], "nombre": r[1], "rfc": ""} for r in rows] if rows else EMPRESAS_DEFAULT.copy()
         if not any(e["id"] == "99" for e in empresas_list):
             empresas_list.append({"id": "99", "nombre": "Almacen", "rfc": ""})
+        if not any(e["id"] == "98" for e in empresas_list):
+            empresas_list.append({"id": "98", "nombre": "APOST-VENTA", "rfc": ""})
         CATALOG_CACHE["empresas"] = empresas_list
         return CATALOG_CACHE["empresas"]
     except Exception as e:
@@ -375,6 +377,7 @@ def get_db_centros_costo():
             LEFT JOIN testing.prof_empresas emp
                 ON cc.source = emp.source
             WHERE SUBSTRING(cc.id_cc FROM 1 FOR 3) ~ '^[1-9A-Za-z](12|13|18|50)$'
+               OR SUBSTRING(cc.id_cc FROM 3 FOR 1) = '6'
                OR cc.id_cc LIKE '900%'
             ORDER BY cc.nombre_cc;
         """
@@ -383,6 +386,8 @@ def get_db_centros_costo():
         cc_list = [{"id": r[0], "empresaId": r[1], "nombre": r[2], "direccion": ""} for r in rows] if rows else CC_DEFAULT.copy()
         if not any(c["id"] == "999" for c in cc_list):
             cc_list.append({"id": "999", "empresaId": "99", "nombre": "Almacen", "direccion": ""})
+        if not any(c["id"] == "998" for c in cc_list):
+            cc_list.append({"id": "998", "empresaId": "98", "nombre": "Apostventa", "direccion": ""})
         CATALOG_CACHE["centros_costo"] = cc_list
         return CATALOG_CACHE["centros_costo"]
     except Exception as e:
@@ -1082,7 +1087,7 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
                 password   = body.get('password', '')
                 empresa_id = body.get('empresa_id', None)  # puede ser None para admin
                 cc_ids     = body.get('cc_ids', None)       # centros de costo asignados (comma-separated)
-                roles_validos = {'almacenista', 'control_obra', 'residente', 'administrador', 'cordinador'}
+                roles_validos = {'almacenista', 'control_obra', 'residente', 'administrador', 'cordinador', 'postventa'}
 
                 if not all([nombre, username, correo, rol, password]):
                     self._json(400, {"error": "Todos los campos son obligatorios."}); return

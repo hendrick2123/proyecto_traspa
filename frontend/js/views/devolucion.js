@@ -363,7 +363,7 @@ function guardarDevolucion() {
     }
   }
 
-  saveState('traspasos');
+  saveState('traspasos', [t, original].filter(Boolean));
 
   document.getElementById('content').innerHTML = `
   <div class="card" style="max-width:600px;margin:40px auto">

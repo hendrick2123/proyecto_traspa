@@ -352,7 +352,7 @@ async function solicitarEdicionTraspaso(id) {
       t.observaciones = t.observaciones ? `${t.observaciones}\n${nota}` : nota;
     }
 
-    await saveState('traspasos');
+    await saveState('traspasos', t);
     if (typeof fetchState === 'function') {
       await fetchState();
     }
@@ -510,7 +510,7 @@ async function guardarEdicionTraspaso(id) {
       t.comentarioRec = null;
     }
 
-    await saveState('traspasos');
+    await saveState('traspasos', t);
     if (typeof fetchState === 'function') {
       await fetchState();
     }

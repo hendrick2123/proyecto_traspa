@@ -8,12 +8,15 @@ let hpTotal = 0;
 
 function renderHistorialProceso() {
   hpPage = 1;
+  const user = getUser();
+  const isPostventa = user && user.rol === 'postventa';
+  const titulo = isPostventa ? 'Almacén Post-Venta' : 'Almacén General';
   
   document.getElementById('content').innerHTML = `
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">Almacén General</h2>
+          <h2 style="font-size:18px;font-weight:800;color:var(--black);margin-bottom:4px">${titulo}</h2>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="hp-buscar" placeholder="Buscar por clave, nombre o comentario..." 
@@ -51,10 +54,14 @@ function cargarHistorialProceso() {
     </div>`;
   }
 
+  const user = getUser();
+  const isPostventa = user && user.rol === 'postventa';
+  const targetCc = isPostventa ? '998' : '999';
+
   fetchTraspasosPaginated({
     page: 1,
     limit: 5000,
-    cc: '999'
+    cc: targetCc
   })
   .then(data => {
     const list = data.traspasos || [];

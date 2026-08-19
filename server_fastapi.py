@@ -149,6 +149,8 @@ def get_db_empresas():
         lst = [{"id": r[0], "nombre": r[1], "rfc": ""} for r in rows] if rows else EMPRESAS_DEFAULT.copy()
         if not any(e["id"] == "99" for e in lst):
             lst.append({"id": "99", "nombre": "Almacen", "rfc": ""})
+        if not any(e["id"] == "98" for e in lst):
+            lst.append({"id": "98", "nombre": "APOST-VENTA", "rfc": ""})
         _cache_set("empresas", lst)
         return lst
     except Exception as e:
@@ -176,6 +178,7 @@ def get_db_centros_costo():
             LEFT JOIN testing.prof_empresas emp
                 ON cc.source = emp.source
             WHERE SUBSTRING(cc.id_cc FROM 1 FOR 3) ~ '^[1-9A-Za-z](12|13|18|50)$'
+               OR SUBSTRING(cc.id_cc FROM 3 FOR 1) = '6'
                OR cc.id_cc LIKE '900%'
             ORDER BY cc.nombre_cc;
         """
@@ -184,6 +187,8 @@ def get_db_centros_costo():
         lst = [{"id": r[0], "empresaId": r[1], "nombre": r[2], "direccion": ""} for r in rows] if rows else CC_DEFAULT.copy()
         if not any(c["id"] == "999" for c in lst):
             lst.append({"id": "999", "empresaId": "99", "nombre": "Almacen", "direccion": ""})
+        if not any(c["id"] == "998" for c in lst):
+            lst.append({"id": "998", "empresaId": "98", "nombre": "Apostventa", "direccion": ""})
         _cache_set("centros_costo", lst)
         return lst
     except Exception as e:
@@ -1265,7 +1270,7 @@ async def api_register(request: Request, user: dict = Depends(get_current_user))
     password   = body.get("password","")
     empresa_id = body.get("empresa_id", None)
     cc_ids     = body.get("cc_ids", None)
-    roles_validos = {"almacenista","control_obra","residente","administrador","cordinador"}
+    roles_validos = {"almacenista","control_obra","residente","administrador","cordinador","postventa"}
     if not all([nombre, username, correo, rol, password]):
         raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
     if rol not in roles_validos:

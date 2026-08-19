@@ -8,6 +8,7 @@ const ROL_LABELS = {
   cordinador:    'Cordinador',
   control_obra:  'Control de Obra',
   residente:     'Residente',
+  postventa:     'Post-Venta',
   administrador: 'Administrador'
 };
 
@@ -17,6 +18,7 @@ const ROL_VIEWS = {
   cordinador:    ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   control_obra:  ['dashboard', 'autorizacion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   residente:     ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
+  postventa:     ['dashboard', 'nueva-solicitud', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   administrador: ['dashboard', 'nueva-solicitud', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion',
                   'empresas', 'centros-costo', 'insumos', 'usuarios']
 };
@@ -158,11 +160,11 @@ window.fetch = function (url, options) {
     }
   }
 
-  // ── Timeout de 15 segundos ────────────────────────────────────────────────
-  // Si el servidor no responde en 15 segundos, la promesa se rechaza con un
+  // ── Timeout de 45 segundos ────────────────────────────────────────────────
+  // Si el servidor no responde en 45 segundos, la promesa se rechaza con un
   // error claro en lugar de quedarse cargando indefinidamente.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
   if (!options.signal) {
     options.signal = controller.signal;
   }
