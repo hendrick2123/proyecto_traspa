@@ -267,6 +267,10 @@ function filtrarPorEmpresa(lista) {
  * Para ORIGEN en nueva solicitud. Admins/Residentes ven todos.
  */
 function ccsPorEmpresa() {
+  const user = getUser();
+  if (user && user.rol === 'postventa') {
+    return S.centrosCosto.filter(c => String(c.id) === '998');
+  }
   const ccIds = getUserCcIds();
   if (ccIds === null) return S.centrosCosto; // admin/residente: todos
   if (ccIds.length === 0) {
@@ -283,6 +287,10 @@ function ccsPorEmpresa() {
  * Devuelve TODOS los centros de costo (para DESTINO en nueva solicitud).
  */
 function ccsDestinoAll() {
+  const user = getUser();
+  if (user && user.rol === 'postventa') {
+    return S.centrosCosto.filter(c => String(c.id) === '998');
+  }
   return S.centrosCosto;
 }
 

@@ -119,17 +119,17 @@ function renderNuevaSolicitud() {
       const select = document.getElementById('sol-solicitante');
       if (!select) return;
       if (data.users) {
-        const almacenistas = data.users.filter(u => u.rol === 'almacenista' && u.activo);
-        if (almacenistas.length > 0) {
+        const solicitantes = data.users.filter(u => (u.rol === 'almacenista' || u.rol === 'postventa') && u.activo);
+        if (solicitantes.length > 0) {
           select.innerHTML = '<option value="">-- Seleccionar solicitante --</option>' + 
-            almacenistas.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
+            solicitantes.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
           // Auto-seleccionar al usuario de la sesión actual
           if (currentUser && currentUser.nombre) {
             const match = Array.from(select.options).find(o => o.value === currentUser.nombre);
             if (match) select.value = currentUser.nombre;
           }
         } else {
-          select.innerHTML = '<option value="">No hay monitores de control activos</option>';
+          select.innerHTML = '<option value="">No hay solicitantes activos</option>';
         }
       }
     })
@@ -137,6 +137,14 @@ function renderNuevaSolicitud() {
       const select = document.getElementById('sol-solicitante');
       if (select) select.innerHTML = '<option value="">Error al cargar solicitantes</option>';
     });
+
+  // Para usuarios con rol postventa, auto-seleccionar CC 998 en Origen y Destino
+  if (currentUser && currentUser.rol === 'postventa') {
+    const oriSel = document.getElementById('sol-cc-ori');
+    const desSel = document.getElementById('sol-cc-des');
+    if (oriSel) { oriSel.value = '998'; updateInfoOri(); }
+    if (desSel) { desSel.value = '998'; updateInfoDes(); }
+  }
 }
 
 // Builds option list for CC dropdowns grouped by Desarrollo

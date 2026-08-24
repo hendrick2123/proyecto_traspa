@@ -350,6 +350,9 @@ def get_db_traspasos_paginated(
             where_clauses.append("(s.empresa_origen IN %s OR s.empresa_destino IN %s)")
             params.extend([tuple(user_empresa_ids), tuple(user_empresa_ids)])
 
+    if user and user.get("rol", "") not in ("administrador", "postventa"):
+        where_clauses.append("s.solicitante NOT IN (SELECT nombre FROM testing.prof_usuarios WHERE rol = 'postventa')")
+
     if status:
         where_clauses.append("s.estado = %s")
         params.append(status)
@@ -943,6 +946,9 @@ def api_get_traspasos_stats(user: dict = Depends(get_current_user)):
             elif user_empresa_ids:
                 where_clauses.append("(empresa_origen IN %s OR empresa_destino IN %s)")
                 params.extend([tuple(user_empresa_ids), tuple(user_empresa_ids)])
+
+        if user.get("rol", "") not in ("administrador", "postventa"):
+            where_clauses.append("solicitante NOT IN (SELECT nombre FROM testing.prof_usuarios WHERE rol = 'postventa')")
 
         where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 

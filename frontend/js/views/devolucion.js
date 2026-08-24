@@ -238,12 +238,17 @@ function renderDevolucion() {
       const select = document.getElementById('dev-solicitante');
       if (!select) return;
       if (data.users) {
-        const almacenistas = data.users.filter(u => u.rol === 'almacenista' && u.activo);
-        if (almacenistas.length > 0) {
+        const currentUser = getUser();
+        const solicitantes = data.users.filter(u => (u.rol === 'almacenista' || u.rol === 'postventa') && u.activo);
+        if (solicitantes.length > 0) {
           select.innerHTML = '<option value="">-- Seleccionar solicitante --</option>' +
-            almacenistas.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
+            solicitantes.map(u => `<option value="${u.nombre}">${u.nombre}</option>`).join('');
+          if (currentUser && currentUser.nombre) {
+            const match = Array.from(select.options).find(o => o.value === currentUser.nombre);
+            if (match) select.value = currentUser.nombre;
+          }
         } else {
-          select.innerHTML = '<option value="">No hay monitores de compras activos</option>';
+          select.innerHTML = '<option value="">No hay solicitantes activos</option>';
         }
       }
     });
