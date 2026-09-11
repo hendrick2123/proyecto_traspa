@@ -18,9 +18,9 @@ const ROL_VIEWS = {
   cordinador:    ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   control_obra:  ['dashboard', 'autorizacion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
   residente:     ['dashboard', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion'],
-  postventa:     ['dashboard', 'nueva-solicitud', 'historial', 'historial-proceso', 'devolucion'],
+  postventa:     ['dashboard', 'nueva-solicitud', 'historial', 'historial-proceso', 'devolucion', 'insumos', 'historial-postventa'],
   administrador: ['dashboard', 'nueva-solicitud', 'autorizacion', 'recepcion', 'historial', 'historial-proceso', 'inventario', 'devolucion',
-                  'empresas', 'centros-costo', 'insumos', 'usuarios']
+                  'empresas', 'centros-costo', 'insumos', 'usuarios', 'historial-postventa']
 };
 
 function getUser() {
@@ -106,6 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
           </svg>
         </button>
       </div>`;
+  }
+
+  // Ocultar "Sistema de Traspasos" para el rol postventa
+  if (user.rol === 'postventa') {
+    const brandSub = document.querySelector('#sidebar .brand-sub');
+    if (brandSub) {
+      brandSub.style.display = 'none';
+    }
   }
 
   // Filtrar nav links según rol

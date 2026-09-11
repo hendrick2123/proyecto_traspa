@@ -9,6 +9,7 @@ const VIEWS = {
   'recepcion':      { title: 'Recepción de Material',        render: renderRecepcion },
   'historial':      { title: 'Historial de Movimientos',     render: renderHistorial },
   'historial-proceso': { title: 'Almacén General', render: renderHistorialProceso },
+  'historial-postventa': { title: 'Historial Post-Venta', render: renderHistorialPostventa },
   'inventario':     { title: 'Inventario', render: typeof renderInventario !== 'undefined' ? renderInventario : () => {} },
   'devolucion':     { title: 'Nueva Devolución',             render: renderDevolucion },
   'empresas':       { title: 'Empresas',                     render: renderEmpresas },

@@ -227,6 +227,11 @@ function agregarItem() {
 let _insSearchActive = null; // índice del dropdown abierto
 
 function _getInsumosFiltered() {
+  // Si es postventa, usar solo los insumos de post-venta
+  const user = getUser();
+  if (user && user.rol === 'postventa') {
+    return S.insumos_postventa || [];
+  }
   // Retornamos todos los insumos sin restringir por el primer dígito
   return S.insumos;
 }

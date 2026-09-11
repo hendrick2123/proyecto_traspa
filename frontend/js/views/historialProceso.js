@@ -91,7 +91,9 @@ function cargarHistorialProceso() {
           cantidad: item.cantidad || 0,
           precio: item.precio || 0,
           comentario: item.comentario || '',
-          imagen: item.imagen || ''
+          imagen: item.imagen || '',
+          salida: item.salida || 0,
+          total: item.total || 0
         });
       });
     });
@@ -160,6 +162,8 @@ function renderHpTable() {
           <th>Insumo</th>
           <th>Unidad</th>
           <th>Cant.</th>
+          <th>Salida</th>
+          <th>Total</th>
           <th>Precio</th>
           <th>Descripción</th>
           <th>Foto</th>
@@ -189,6 +193,8 @@ function renderHpTable() {
               <td class="text-sm">${r.nombre}</td>
               <td class="text-sm">${r.unidad}</td>
               <td class="text-sm" style="font-weight:700">${r.cantidad}</td>
+              <td class="text-sm" style="font-weight:700;color:var(--orange)">${r.salida}</td>
+              <td class="text-sm" style="font-weight:700;color:var(--green)">${r.total}</td>
               <td class="text-sm">$${parseFloat(r.precio).toFixed(2)}</td>
               <td class="text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.comentario}">${r.comentario || '—'}</td>
               <td style="text-align:center">${fotoHtml}</td>

@@ -325,6 +325,21 @@ def init_traspasos_tables():
         cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS precio NUMERIC(12, 4) DEFAULT 0;")
         cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS comentario_insumo TEXT DEFAULT '';")
         cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS imagen TEXT DEFAULT '';")
+        cur.execute("ALTER TABLE testing.detalle_traspaso_insumos_v2 ADD COLUMN IF NOT EXISTS salida NUMERIC(12, 4) DEFAULT 0;")
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS testing.historial_postventa (
+                id_historial SERIAL PRIMARY KEY,
+                id_insumo_pv INT NOT NULL,
+                cantidad_anterior NUMERIC(12,4) DEFAULT 0,
+                cantidad_agregada NUMERIC(12,4) DEFAULT 0,
+                salida NUMERIC(12,4) DEFAULT 0,
+                cantidad_total NUMERIC(12,4) DEFAULT 0,
+                orden_compra VARCHAR(100),
+                usuario VARCHAR(100),
+                fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
         conn.commit()
         cur.close()
         conn.close()
@@ -1011,6 +1026,68 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
                 self._json(500, {"error": str(e)})
             return
 
+        # ── GET /api/historial_postventa ──
+        if path == '/api/historial_postventa':
+            user = self._get_authenticated_user()
+            if not user or user.get('rol') not in ('administrador', 'postventa'):
+                self._json(403, {"error": "No autorizado."})
+                return
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT 
+                        h.id_historial, 
+                        h.id_insumo_pv, 
+                        COALESCE(i.descripcion, 'Desconocido') AS nombre_insumo,
+                        COALESCE(CONCAT('PV-', i.id), '') AS clave,
+                        h.cantidad_anterior, 
+                        h.cantidad_agregada, 
+                        h.salida, 
+                        h.cantidad_total,
+                        h.orden_compra, 
+                        h.usuario, 
+                        h.fecha_movimiento
+                    FROM testing.historial_postventa h
+                    LEFT JOIN testing.insumos_postventa i ON h.id_insumo_pv = i.id
+
+                    UNION ALL
+
+                    SELECT 
+                        d.id_detalle AS id_historial,
+                        NULL AS id_insumo_pv,
+                        d.nombre_insumo,
+                        d.clave_insumo AS clave,
+                        d.cantidad AS cantidad_anterior,
+                        0 AS cantidad_agregada,
+                        COALESCE(d.salida, 0) AS salida,
+                        (d.cantidad - COALESCE(d.salida, 0)) AS cantidad_total,
+                        s.folio AS orden_compra,
+                        s.solicitante AS usuario,
+                        s.fecha_solicitud AS fecha_movimiento
+                    FROM testing.detalle_traspaso_insumos_v2 d
+                    JOIN testing.solicitudes_traspasos_v2 s ON d.id_solicitud = s.id_solicitud
+                    WHERE d.salida IS NOT NULL AND d.salida > 0
+
+                    ORDER BY fecha_movimiento DESC;
+                """)
+                cols = ['id_historial', 'id_insumo_pv', 'nombre_insumo', 'clave',
+                        'cantidad_anterior', 'cantidad_agregada', 'salida', 'cantidad_total',
+                        'orden_compra', 'usuario', 'fecha_movimiento']
+                rows = []
+                for row in cur.fetchall():
+                    r = dict(zip(cols, row))
+                    for k in ['cantidad_anterior', 'cantidad_agregada', 'salida', 'cantidad_total']:
+                        r[k] = float(r[k]) if r[k] is not None else 0
+                    if r['fecha_movimiento']:
+                        r['fecha_movimiento'] = r['fecha_movimiento'].isoformat()
+                    rows.append(r)
+                cur.close(); conn.close()
+                self._json(200, {"status": "success", "data": rows})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
+
         # ── Static files ──
         clean_path = '/' if path == '/' else path
         if clean_path == '/':
@@ -1246,6 +1323,122 @@ class WarehouseTransferHandler(http.server.BaseHTTPRequestHandler):
                 cur.execute(f"UPDATE testing.prof_usuarios SET {', '.join(updates)} WHERE id = %s;", params)
                 conn.commit(); cur.close(); conn.close()
                 self._json(200, {"ok": True})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
+
+        # ── PUT /api/insumos_postventa/<id_pv>/add_stock ──
+        if path.startswith('/api/insumos_postventa/') and path.endswith('/add_stock'):
+            user = self._get_authenticated_user()
+            if not user or user.get('rol') not in ('administrador', 'postventa'):
+                self._json(403, {"error": "No autorizado."})
+                return
+            try:
+                parts = path.split('/')
+                id_pv = parts[-2]
+                body = self._read_body()
+                add_cantidad = float(body.get('cantidad', 0))
+                orden_compra = body.get('orden_compra', '').strip()
+                if add_cantidad <= 0:
+                    self._json(400, {"error": "La cantidad a agregar debe ser mayor a 0"})
+                    return
+                if not orden_compra:
+                    self._json(400, {"error": "La orden de compra es obligatoria"})
+                    return
+                
+                numeric_id = int(id_pv.replace("PV-", ""))
+                
+                conn = get_db_connection()
+                cur = conn.cursor()
+
+                # Obtener cantidad anterior
+                cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
+                row = cur.fetchone()
+                if row is None:
+                    cur.close(); conn.close()
+                    self._json(404, {"error": "Insumo no encontrado"})
+                    return
+                cantidad_anterior = float(row[0])
+                cantidad_total = cantidad_anterior + add_cantidad
+
+                # Actualizar cantidad
+                cur.execute("""
+                    UPDATE testing.insumos_postventa 
+                    SET cantidad = %s 
+                    WHERE id = %s;
+                """, (cantidad_total, numeric_id))
+
+                # Registrar en historial
+                cur.execute("""
+                    INSERT INTO testing.historial_postventa
+                        (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+                    VALUES (%s, %s, %s, 0, %s, %s, %s);
+                """, (numeric_id, cantidad_anterior, add_cantidad, cantidad_total, orden_compra, user.get('nombre', user.get('username', ''))))
+
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                self._json(200, {"status": "success", "new_cantidad": cantidad_total})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
+
+        # ── PUT /api/insumos_postventa/<id_pv>/remove_stock ──
+        if path.startswith('/api/insumos_postventa/') and path.endswith('/remove_stock'):
+            user = self._get_authenticated_user()
+            if not user or user.get('rol') not in ('administrador', 'postventa'):
+                self._json(403, {"error": "No autorizado."})
+                return
+            try:
+                parts = path.split('/')
+                id_pv = parts[-2]
+                body = self._read_body()
+                salida_cantidad = float(body.get('cantidad', 0))
+                orden_compra = body.get('orden_compra', '').strip() or body.get('motivo', '').strip() or 'SALIDA'
+                if salida_cantidad <= 0:
+                    self._json(400, {"error": "La cantidad a retirar debe ser mayor a 0"})
+                    return
+                
+                numeric_id = int(id_pv.replace("PV-", ""))
+                
+                conn = get_db_connection()
+                cur = conn.cursor()
+
+                # Obtener cantidad anterior
+                cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
+                row = cur.fetchone()
+                if row is None:
+                    cur.close(); conn.close()
+                    self._json(404, {"error": "Insumo no encontrado"})
+                    return
+                cantidad_anterior = float(row[0])
+                if salida_cantidad > cantidad_anterior:
+                    cur.close(); conn.close()
+                    self._json(400, {"error": f"La cantidad a retirar ({salida_cantidad}) supera el stock disponible ({cantidad_anterior})"})
+                    return
+
+                cantidad_total = cantidad_anterior - salida_cantidad
+
+                # Actualizar cantidad
+                cur.execute("""
+                    UPDATE testing.insumos_postventa 
+                    SET cantidad = %s 
+                    WHERE id = %s;
+                """, (cantidad_total, numeric_id))
+
+                # Registrar en historial
+                cur.execute("""
+                    INSERT INTO testing.historial_postventa
+                        (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+                    VALUES (%s, %s, 0, %s, %s, %s, %s);
+                """, (numeric_id, cantidad_anterior, salida_cantidad, cantidad_total, orden_compra, user.get('nombre', user.get('username', ''))))
+
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                self._json(200, {"status": "success", "new_cantidad": cantidad_total})
             except Exception as e:
                 self._json(500, {"error": str(e)})
             return

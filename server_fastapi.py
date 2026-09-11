@@ -271,7 +271,7 @@ def get_db_traspasos(conn=None):
             return []
 
         cur.execute("""
-            SELECT id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen
+            SELECT id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen, salida, total
             FROM testing.detalle_traspaso_insumos_v2
             ORDER BY id_detalle;
         """)
@@ -285,7 +285,9 @@ def get_db_traspasos(conn=None):
             items_map.setdefault(sid, []).append({
                 "insumoId": d[1], "nombre": d[2], "cantidad": float(d[3]),
                 "unidad": d[4], "precio": float(d[5]) if d[5] is not None else 0.0,
-                "comentario": d[6] or "", "imagen": d[7] or ""
+                "comentario": d[6] or "", "imagen": d[7] or "",
+                "salida": float(d[8]) if d[8] is not None else 0.0,
+                "total": float(d[9]) if d[9] is not None else 0.0
             })
 
         traspasos = []
@@ -888,6 +890,246 @@ async def api_post_insumos(request: Request, user: dict = Depends(get_current_us
         json.dump(local_db, f, indent=2, ensure_ascii=False)
     invalidate_catalog_cache("insumos")
     return {"status": "success"}
+
+@app.get("/api/insumos_postventa")
+def api_get_insumos_postventa(user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    insumos = []
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, descripcion, unidad, tipo, especialidad, creado_por, cantidad FROM testing.insumos_postventa ORDER BY id;")
+            rows = cur.fetchall()
+            for r in rows:
+                insumos.append({
+                    "id": f"PV-{r[0]}",
+                    "clave": f"PV-{r[0]}",
+                    "nombre": r[1],
+                    "unidad": r[2],
+                    "categoria": r[3],
+                    "especialidad": r[4] or "",
+                    "creado_por": r[5] or "",
+                    "cantidad": float(r[6] or 0)
+                })
+        except Exception as e:
+            print(f"Error fetching insumos_postventa: {e}", file=sys.stderr)
+        finally:
+            conn.close()
+    return {"insumos": insumos}
+
+@app.post("/api/insumos_postventa")
+async def api_post_insumos_postventa(request: Request, user: dict = Depends(get_current_user)):
+    data = await request.json()
+    conn = get_db_connection()
+    new_id = None
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO testing.insumos_postventa (descripcion, unidad, tipo, especialidad, creado_por, cantidad)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;
+            """, (data.get("nombre"), data.get("unidad"), data.get("categoria"), data.get("especialidad"), user.get("username"), data.get("cantidad", 0)))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error saving insumo_postventa: {e}", file=sys.stderr)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save"})
+        finally:
+            conn.close()
+    if new_id:
+        return {"status": "success", "id": f"PV-{new_id}", "clave": f"PV-{new_id}"}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+
+@app.put("/api/insumos_postventa/{id_pv}/add_stock")
+async def api_put_insumos_postventa_add_stock(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
+    if user.get("rol") not in ["administrador", "postventa"]:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+    
+    data = await request.json()
+    add_cantidad = float(data.get("cantidad", 0))
+    orden_compra = data.get("orden_compra", "").strip()
+    if add_cantidad <= 0:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"status": "error", "message": "La cantidad a agregar debe ser mayor a 0"})
+    if not orden_compra:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"status": "error", "message": "La orden de compra es obligatoria"})
+
+    try:
+        numeric_id = int(id_pv.replace("PV-", ""))
+    except ValueError:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"status": "error", "message": "ID inválido"})
+
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            # Obtener cantidad anterior
+            cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
+            row = cur.fetchone()
+            if row is None:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=404, content={"status": "error", "message": "Insumo no encontrado"})
+            cantidad_anterior = float(row[0])
+            cantidad_total = cantidad_anterior + add_cantidad
+
+            # Actualizar cantidad
+            cur.execute("""
+                UPDATE testing.insumos_postventa 
+                SET cantidad = %s 
+                WHERE id = %s;
+            """, (cantidad_total, numeric_id))
+
+            # Registrar en historial
+            cur.execute("""
+                INSERT INTO testing.historial_postventa
+                    (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+                VALUES (%s, %s, %s, 0, %s, %s, %s);
+            """, (numeric_id, cantidad_anterior, add_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
+
+            conn.commit()
+            return {"status": "success", "new_cantidad": cantidad_total}
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating insumo_postventa stock: {e}", file=sys.stderr)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update stock"})
+        finally:
+            conn.close()
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+
+@app.put("/api/insumos_postventa/{id_pv}/remove_stock")
+async def api_put_insumos_postventa_remove_stock(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
+    if user.get("rol") not in ["administrador", "postventa"]:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+    
+    data = await request.json()
+    salida_cantidad = float(data.get("cantidad", 0))
+    orden_compra = data.get("orden_compra", "").strip() or data.get("motivo", "").strip() or "SALIDA"
+    if salida_cantidad <= 0:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"status": "error", "message": "La cantidad a retirar debe ser mayor a 0"})
+
+    try:
+        numeric_id = int(id_pv.replace("PV-", ""))
+    except ValueError:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"status": "error", "message": "ID inválido"})
+
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
+            row = cur.fetchone()
+            if row is None:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=404, content={"status": "error", "message": "Insumo no encontrado"})
+            cantidad_anterior = float(row[0])
+            if salida_cantidad > cantidad_anterior:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=400, content={"status": "error", "message": f"La cantidad a retirar ({salida_cantidad}) supera el stock actual ({cantidad_anterior})"})
+
+            cantidad_total = cantidad_anterior - salida_cantidad
+
+            cur.execute("""
+                UPDATE testing.insumos_postventa 
+                SET cantidad = %s 
+                WHERE id = %s;
+            """, (cantidad_total, numeric_id))
+
+            cur.execute("""
+                INSERT INTO testing.historial_postventa
+                    (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+                VALUES (%s, %s, 0, %s, %s, %s, %s);
+            """, (numeric_id, cantidad_anterior, salida_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
+
+            conn.commit()
+            return {"status": "success", "new_cantidad": cantidad_total}
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating insumo_postventa stock salida: {e}", file=sys.stderr)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update stock"})
+        finally:
+            conn.close()
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+
+@app.get("/api/historial_postventa")
+async def api_get_historial_postventa(user: dict = Depends(get_current_user)):
+    if user.get("rol") not in ["administrador", "postventa"]:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+    
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    h.id_historial, 
+                    h.id_insumo_pv, 
+                    COALESCE(i.descripcion, 'Desconocido') AS nombre_insumo,
+                    COALESCE(CONCAT('PV-', i.id), '') AS clave,
+                    h.cantidad_anterior, 
+                    h.cantidad_agregada, 
+                    h.salida, 
+                    h.cantidad_total,
+                    h.orden_compra, 
+                    h.usuario, 
+                    h.fecha_movimiento
+                FROM testing.historial_postventa h
+                LEFT JOIN testing.insumos_postventa i ON h.id_insumo_pv = i.id
+
+                UNION ALL
+
+                SELECT 
+                    d.id_detalle AS id_historial,
+                    NULL AS id_insumo_pv,
+                    d.nombre_insumo,
+                    d.clave_insumo AS clave,
+                    d.cantidad AS cantidad_anterior,
+                    0 AS cantidad_agregada,
+                    COALESCE(d.salida, 0) AS salida,
+                    (d.cantidad - COALESCE(d.salida, 0)) AS cantidad_total,
+                    s.folio AS orden_compra,
+                    s.solicitante AS usuario,
+                    s.fecha_solicitud AS fecha_movimiento
+                FROM testing.detalle_traspaso_insumos_v2 d
+                JOIN testing.solicitudes_traspasos_v2 s ON d.id_solicitud = s.id_solicitud
+                WHERE d.salida IS NOT NULL AND d.salida > 0
+
+                ORDER BY fecha_movimiento DESC;
+            """)
+            cols = ['id_historial', 'id_insumo_pv', 'nombre_insumo', 'clave', 
+                    'cantidad_anterior', 'cantidad_agregada', 'salida', 'cantidad_total',
+                    'orden_compra', 'usuario', 'fecha_movimiento']
+            rows = []
+            for row in cur.fetchall():
+                r = dict(zip(cols, row))
+                for k in ['cantidad_anterior', 'cantidad_agregada', 'salida', 'cantidad_total']:
+                    r[k] = float(r[k]) if r[k] is not None else 0
+                if r['fecha_movimiento']:
+                    r['fecha_movimiento'] = r['fecha_movimiento'].isoformat()
+                rows.append(r)
+            cur.close()
+            return {"status": "success", "data": rows}
+        except Exception as e:
+            print(f"Error fetching historial_postventa: {e}", file=sys.stderr)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        finally:
+            conn.close()
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
 
 @app.post("/api/admin/cache/clear")
 def api_clear_cache(user: dict = Depends(get_current_user)):

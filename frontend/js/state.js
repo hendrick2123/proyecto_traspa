@@ -7,6 +7,7 @@ function loadState() {
     empresas:     typeof EMPRESAS_DEFAULT !== 'undefined' ? EMPRESAS_DEFAULT : [{"id": '99', "nombre": 'Almacen', "rfc": ''}],
     centrosCosto: typeof CC_DEFAULT !== 'undefined' ? CC_DEFAULT : [{"id": '999', "empresaId": '99', "nombre": 'Almacen', "direccion": ''}],
     insumos:      typeof INSUMOS_DEFAULT !== 'undefined' ? INSUMOS_DEFAULT : [],
+    insumos_postventa: [],
     traspasos:    [],
     folios:       { PRS: 0, TOB: 0, DEV: 0, GAR: 0 },
   };
@@ -29,13 +30,15 @@ function fetchState() {
     fetch(API_BASE + '/api/insumos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
     fetch(API_BASE + '/api/desarrollos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
     fetch(API_BASE + '/api/traspasos', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
-    fetch(API_BASE + '/api/folios', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); })
+    fetch(API_BASE + '/api/folios', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }),
+    fetch(API_BASE + '/api/insumos_postventa', { headers }).then(res => { if (!res.ok) throw new Error(); return res.json(); }).catch(() => ({ insumos: [] }))
   ])
-  .then(([empData, ccData, insData, devData, trData, folioData]) => {
+  .then(([empData, ccData, insData, devData, trData, folioData, insPostventaData]) => {
     S = {
       empresas: empData.empresas || (Array.isArray(empData) ? empData : []),
       centrosCosto: ccData.centrosCosto || (Array.isArray(ccData) ? ccData : []),
       insumos: insData.insumos || (Array.isArray(insData) ? insData : []),
+      insumos_postventa: insPostventaData.insumos || (Array.isArray(insPostventaData) ? insPostventaData : []),
       desarrollos: devData.desarrollos || (Array.isArray(devData) ? devData : []),
       traspasos: trData.traspasos || (Array.isArray(trData) ? trData : []),
       folios: folioData.folios || folioData || { PRS: 0, TOB: 0, DEV: 0, GAR: 0 }
@@ -200,6 +203,11 @@ function getInsumo(id) {
   const strId = String(id).trim();
   const found = S.insumos.find(i => String(i.id).trim() === strId || String(i.clave).trim() === strId || (i.nombre && i.nombre.trim() === strId));
   if (found) return found;
+  // Also search in insumos_postventa
+  if (S.insumos_postventa && S.insumos_postventa.length > 0) {
+    const foundPV = S.insumos_postventa.find(i => String(i.id).trim() === strId || String(i.clave).trim() === strId || (i.nombre && i.nombre.trim() === strId));
+    if (foundPV) return foundPV;
+  }
   return { id: strId, nombre: strId, unidad: '—', clave: '—' };
 }
 
