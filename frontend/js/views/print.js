@@ -30,15 +30,20 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     ? `<div class="watermark ${t.status === 'recibido' ? 'recibido' : (t.status === 'pre_autorizado' ? 'pre_autorizado' : 'autorizado')}">${t.status === 'recibido' ? 'RECIBIDO' : (t.status === 'pre_autorizado' ? 'PRE-AUTORIZADO' : 'AUTORIZADO')}</div>`
     : '';
 
-  const hasExtra = t.items.some(i => i.precio > 0 || i.comentario);
+  const hasExtra = t.items.some(i => i.comentario || (getInsumo(i.insumoId) && getInsumo(i.insumoId).especificaciones));
+  const hasPhotos = t.items.some(i => i.imagen || (getInsumo(i.insumoId) && getInsumo(i.insumoId).imagen));
   const itemsRows = t.items.map(i => {
     const ins = getInsumo(i.insumoId);
+    const foto = i.imagen || (ins ? ins.imagen : '');
+    const desc = i.comentario || (ins ? ins.especificaciones : '') || '—';
     return `<tr>
-      <td>${ins.clave}</td>
-      <td>${ins.nombre}</td>
+      <td style="font-family:monospace;font-weight:700">${ins.clave || i.insumoId}</td>
+      <td style="font-weight:600">${ins.nombre}</td>
+      ${hasExtra ? `<td style="font-size:11px;color:#444">${desc}</td>` : ''}
       <td>${ins.categoria || '—'}</td>
-      <td style="text-align:center">${i.cantidad}</td>
-      <td style="text-align:center">${ins.unidad}</td>
+      <td style="text-align:center;font-weight:700">${i.cantidad}</td>
+      <td style="text-align:center">${ins.unidad || 'Pieza'}</td>
+      ${hasPhotos ? `<td style="text-align:center">${foto ? `<img src="${foto}" style="height:32px;width:32px;object-fit:cover;border-radius:3px">` : '—'}</td>` : ''}
     </tr>`;
   }).join('');
 
@@ -124,11 +129,22 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
   <div class="section">
     <h4>Insumos a Traspasar</h4>
     <table>
-      <thead><tr><th>#</th><th>Clave</th><th>Descripción del Insumo</th><th>Categoría</th>${hasExtra ? '<th>Detalle / Comentario</th>' : ''}<th style="text-align:center">Cantidad</th><th style="text-align:center">Unidad</th>${hasExtra ? '<th style="text-align:center">Precio</th>' : ''}</tr></thead>
+      <thead><tr><th>#</th><th style="width:40px;text-align:center">Foto</th><th>Clave</th><th>Descripción del Insumo</th><th>Categoría</th>${hasExtra ? '<th>Detalle / Estado</th>' : ''}<th style="text-align:center">Cantidad</th><th style="text-align:center">Unidad</th></tr></thead>
       <tbody>
         ${t.items.map((i, idx) => {
           const ins = getInsumo(i.insumoId);
-          return `<tr><td>${idx + 1}</td><td>${ins.clave}</td><td>${ins.nombre}</td><td>${ins.categoria || '—'}</td>${hasExtra ? `<td>${i.comentario || '—'}</td>` : ''}<td style="text-align:center">${i.cantidad}</td><td style="text-align:center">${ins.unidad}</td>${hasExtra ? `<td style="text-align:center">$${parseFloat(i.precio||0).toFixed(2)}</td>` : ''}</tr>`;
+          const foto = i.imagen || (ins ? ins.imagen : '');
+          const desc = i.comentario || (ins ? ins.especificaciones : '') || '—';
+          return `<tr>
+            <td>${idx + 1}</td>
+            <td style="text-align:center">${foto ? `<img src="${foto}" style="height:28px;width:28px;object-fit:cover;border-radius:3px">` : '—'}</td>
+            <td style="font-family:monospace;font-weight:700">${ins.clave || i.insumoId}</td>
+            <td style="font-weight:600">${ins.nombre}</td>
+            <td>${ins.categoria || '—'}</td>
+            ${hasExtra ? `<td style="font-size:11px;color:#444">${desc}</td>` : ''}
+            <td style="text-align:center;font-weight:700">${i.cantidad}</td>
+            <td style="text-align:center">${ins.unidad || 'Pieza'}</td>
+          </tr>`;
         }).join('')}
       </tbody>
     </table>

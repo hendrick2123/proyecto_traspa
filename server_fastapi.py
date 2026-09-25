@@ -229,12 +229,21 @@ def get_db_insumos():
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
-            SELECT DISTINCT ins.insumo, ins.descripcion, ins.unidad, ins.tipo
-            FROM testing.prof_insumos_v2 ins
+            SELECT ins.insumo, ins.descripcion, ins.unidad, ins.tipo,
+                   COALESCE(stk.total_cantidad, 0) AS cantidad_total
+            FROM (
+                SELECT DISTINCT insumo, descripcion, unidad, tipo
+                FROM testing.prof_insumos_v2
+            ) ins
+            LEFT JOIN (
+                SELECT insumo, SUM(CAST(cantidad AS NUMERIC)) AS total_cantidad
+                FROM testing.prof_insumo_cantidad
+                GROUP BY insumo
+            ) stk ON ins.insumo = stk.insumo
             ORDER BY ins.descripcion;
         """)
         rows = cur.fetchall(); cur.close()
-        data = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material"} for r in rows] if rows else INSUMOS_DEFAULT
+        data = [{"id": r[0], "clave": r[0], "nombre": r[1], "unidad": r[2] or "—", "categoria": r[3] or "Material", "cantidad": float(r[4]) if r[4] is not None else 0} for r in rows] if rows else INSUMOS_DEFAULT
         _cache_set("insumos", data)
         return data
     except Exception as e:
@@ -342,15 +351,23 @@ def get_db_traspasos_paginated(
     where_clauses = []
     params = []
     
-    if user and user.get("rol", "") not in ("administrador", "residente", "cordinador"):
+    if user and user.get("rol", "") not in ("administrador", "residente", "cordinador", "coordinador", "control_obra"):
         user_cc_ids = [c.strip() for c in (user.get("cc_ids") or "").split(",") if c.strip()]
         user_empresa_ids = [e.strip() for e in (user.get("empresa_id") or "").split(",") if e.strip()]
         if user_cc_ids:
-            where_clauses.append("(s.cc_origen IN %s OR s.cc_destino IN %s OR s.solicitante = %s)")
-            params.extend([tuple(user_cc_ids), tuple(user_cc_ids), user.get("nombre", "")])
+            cc_perm_clauses = []
+            for cid in user_cc_ids:
+                cc_perm_clauses.append("s.cc_origen = %s OR s.cc_origen LIKE %s OR s.cc_destino = %s OR s.cc_destino LIKE %s")
+                params.extend([cid, f"{cid}%", cid, f"{cid}%"])
+            where_clauses.append(f"({' OR '.join(cc_perm_clauses)} OR s.solicitante = %s)")
+            params.append(user.get("nombre", ""))
         elif user_empresa_ids:
-            where_clauses.append("(s.empresa_origen IN %s OR s.empresa_destino IN %s)")
-            params.extend([tuple(user_empresa_ids), tuple(user_empresa_ids)])
+            emp_perm_clauses = []
+            for eid in user_empresa_ids:
+                eid_clean = eid.lstrip('0') or '0'
+                emp_perm_clauses.append("s.empresa_origen = %s OR s.empresa_origen = %s OR s.empresa_destino = %s OR s.empresa_destino = %s")
+                params.extend([eid, eid_clean, eid, eid_clean])
+            where_clauses.append(f"({' OR '.join(emp_perm_clauses)})")
 
     if user and user.get("rol", "") not in ("administrador", "postventa"):
         where_clauses.append("s.solicitante NOT IN (SELECT nombre FROM testing.prof_usuarios WHERE rol = 'postventa')")
@@ -362,21 +379,22 @@ def get_db_traspasos_paginated(
         where_clauses.append("s.tipo_traspaso = %s")
         params.append(tipo)
     if cc:
-        where_clauses.append("(s.cc_origen = %s OR s.cc_destino = %s)")
-        params.extend([cc, cc])
+        where_clauses.append("(s.cc_origen = %s OR s.cc_origen LIKE %s OR s.cc_destino = %s OR s.cc_destino LIKE %s)")
+        params.extend([cc, f"{cc}%", cc, f"{cc}%"])
     if empresa:
+        emp_clean = empresa.lstrip('0') or '0'
         if empresa_rol == "origen":
-            where_clauses.append("s.empresa_origen = %s")
-            params.append(empresa)
+            where_clauses.append("(s.empresa_origen = %s OR s.empresa_origen = %s)")
+            params.extend([empresa, emp_clean])
         elif empresa_rol == "destino":
-            where_clauses.append("s.empresa_destino = %s")
-            params.append(empresa)
+            where_clauses.append("(s.empresa_destino = %s OR s.empresa_destino = %s)")
+            params.extend([empresa, emp_clean])
         else:
-            where_clauses.append("(s.empresa_origen = %s OR s.empresa_destino = %s)")
-            params.extend([empresa, empresa])
+            where_clauses.append("(s.empresa_origen = %s OR s.empresa_origen = %s OR s.empresa_destino = %s OR s.empresa_destino = %s)")
+            params.extend([empresa, emp_clean, empresa, emp_clean])
     if insumo:
-        where_clauses.append("d.clave_insumo = %s")
-        params.append(insumo)
+        where_clauses.append("(d.clave_insumo = %s OR d.clave_insumo LIKE %s OR d.nombre_insumo ILIKE %s)")
+        params.extend([insumo, f"{insumo}%", f"%{insumo}%"])
 
     if q:
         q_term = f"%{q}%"
@@ -539,10 +557,12 @@ def save_db_traspaso(t: dict, conn=None):
             sol_id = cur.fetchone()[0]
 
         if "items" in t:
+            status_is_recibido = (t.get("status") == "recibido")
             for item in t.get("items", []):
-                insumo_id = item.get("insumoId","")
+                insumo_id = str(item.get("insumoId","")).strip()
                 nombre    = item.get("nombre","")
                 unidad    = item.get("unidad","")
+                cant_req  = float(item.get("cantidad", 0) or 0)
                 if not nombre or not unidad or nombre == insumo_id:
                     try:
                         cur.execute("SELECT descripcion, unidad FROM testing.prof_insumos_v2 WHERE insumo = %s LIMIT 1;", (insumo_id,))
@@ -557,8 +577,79 @@ def save_db_traspaso(t: dict, conn=None):
                     INSERT INTO testing.detalle_traspaso_insumos_v2
                         (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
-                """, (sol_id, insumo_id, nombre, item.get("cantidad",0), unidad,
+                """, (sol_id, insumo_id, nombre, cant_req, unidad,
                       item.get("precio",0.0), item.get("comentario",""), item.get("imagen","")))
+
+                # If status is recibido, update stock in database/local_db
+                if status_is_recibido and cant_req > 0:
+                    try:
+                        if insumo_id.startswith("PV-") or (insumo_id.isdigit() and len(insumo_id) <= 6):
+                            numeric_pv_id = int(insumo_id.replace("PV-", ""))
+                            cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_pv_id,))
+                            stock_row = cur.fetchone()
+                            if stock_row:
+                                cant_ant = float(stock_row[0] or 0)
+                                if cant_req > cant_ant:
+                                    raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cant_ant}) para el insumo {nombre}")
+                                new_cant = max(0.0, cant_ant - cant_req)
+                                cur.execute("UPDATE testing.insumos_postventa SET cantidad = %s WHERE id = %s;", (new_cant, numeric_pv_id))
+                                cur.execute("""
+                                    INSERT INTO testing.historial_postventa
+                                        (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario, fecha_movimiento)
+                                    VALUES (%s, %s, 0, %s, %s, %s, %s, NOW());
+                                """, (numeric_pv_id, cant_ant, cant_req, new_cant, f"Traspaso {t.get('folio', '')}", t.get("solicitante", "Sistema")))
+                        else:
+                            # General insumo stock deduction: check prof_insumo_cantidad + local_db
+                            # 1. Check stock in prof_insumo_cantidad table
+                            db_stock_checked = False
+                            try:
+                                cur.execute("""
+                                    SELECT COALESCE(SUM(CAST(cantidad AS NUMERIC)), 0)
+                                    FROM testing.prof_insumo_cantidad
+                                    WHERE insumo = %s;
+                                """, (insumo_id,))
+                                stk_row = cur.fetchone()
+                                if stk_row and float(stk_row[0] or 0) > 0:
+                                    db_stock = float(stk_row[0])
+                                    if cant_req > db_stock:
+                                        raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({db_stock}) para el insumo {nombre}")
+                                    db_stock_checked = True
+                            except Exception as db_stk_err:
+                                if "supera el stock" in str(db_stk_err):
+                                    raise db_stk_err
+                                print(f"Warning checking prof_insumo_cantidad: {db_stk_err}", file=sys.stderr, flush=True)
+
+                            # 2. Also check/update local_db meta
+                            if os.path.exists(DB_FILE):
+                                with open(DB_FILE, "r", encoding="utf-8") as f:
+                                    ldb = json.load(f)
+                                meta_map = ldb.get("insumos_meta", {})
+                                custom_list = ldb.get("insumos", [])
+                                updated = False
+                                if insumo_id in meta_map and meta_map[insumo_id].get("cantidad") is not None:
+                                    cur_stk = float(meta_map[insumo_id]["cantidad"] or 0)
+                                    if cant_req > cur_stk:
+                                        raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cur_stk}) para el insumo {nombre}")
+                                    meta_map[insumo_id]["cantidad"] = max(0.0, cur_stk - cant_req)
+                                    updated = True
+                                for c_ins in custom_list:
+                                    if str(c_ins.get("id") or c_ins.get("clave") or "").strip() == insumo_id and c_ins.get("cantidad") is not None:
+                                        cur_stk = float(c_ins["cantidad"] or 0)
+                                        if cant_req > cur_stk:
+                                            raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cur_stk}) para el insumo {nombre}")
+                                        c_ins["cantidad"] = max(0.0, cur_stk - cant_req)
+                                        updated = True
+                                if updated:
+                                    ldb["insumos_meta"] = meta_map
+                                    ldb["insumos"] = custom_list
+                                    with open(DB_FILE, "w", encoding="utf-8") as f:
+                                        json.dump(ldb, f, indent=2, ensure_ascii=False)
+                            
+                            # 3. Invalidar cache de insumos para reflejar nuevo stock
+                            invalidate_catalog_cache("insumos")
+                    except Exception as err_stock:
+                        print(f"Warning stock check/deduction: {err_stock}", file=sys.stderr, flush=True)
+                        raise err_stock
 
         conn.commit(); cur.close()
         if close_conn: conn.close()
@@ -861,31 +952,78 @@ async def api_post_centros_costo(request: Request, user: dict = Depends(get_curr
 @app.get("/api/insumos")
 def api_get_insumos(user: dict = Depends(get_current_user)):
     insumos = get_db_insumos()
+    meta_map = {}
+    custom_ins = []
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 local_db = json.load(f)
-            for li in local_db.get("insumos", []):
-                if not any(i["id"] == li["id"] for i in insumos):
-                    insumos.append(li)
-        except Exception: pass
-    return {"insumos": insumos}
+            meta_map = local_db.get("insumos_meta", {})
+            custom_ins = local_db.get("insumos", [])
+        except Exception:
+            pass
+
+    result = []
+    for ins in insumos:
+        item = dict(ins)
+        ins_id = str(item.get("id") or item.get("clave") or "").strip()
+        if ins_id in meta_map:
+            meta = meta_map[ins_id]
+            if "cantidad" in meta:
+                item["cantidad"] = meta["cantidad"]
+            if "imagen" in meta:
+                item["imagen"] = meta["imagen"]
+            if "especificaciones" in meta:
+                item["especificaciones"] = meta["especificaciones"]
+            if "categoria" in meta and meta["categoria"]:
+                item["categoria"] = meta["categoria"]
+            if "nombre" in meta and meta["nombre"]:
+                item["nombre"] = meta["nombre"]
+            if "unidad" in meta and meta["unidad"]:
+                item["unidad"] = meta["unidad"]
+        result.append(item)
+
+    for ci in custom_ins:
+        ci_id = str(ci.get("id") or ci.get("clave") or "").strip()
+        if not any(str(i.get("id") or i.get("clave") or "").strip() == ci_id for i in result):
+            result.append(ci)
+
+    return {"insumos": result}
 
 @app.post("/api/insumos")
 async def api_post_insumos(request: Request, user: dict = Depends(get_current_user)):
     data = await request.json()
     official_ins = get_db_insumos()
     incoming_ins = data.get("insumos", [])
-    filtered_ins = [i for i in incoming_ins if not any(oi["id"] == i["id"] for oi in official_ins)]
     
     local_db = {}
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 local_db = json.load(f)
-        except Exception: pass
-        
-    local_db["insumos"] = filtered_ins
+        except Exception:
+            pass
+
+    meta_map = local_db.get("insumos_meta", {})
+    custom_ins = []
+    
+    for item in incoming_ins:
+        ins_id = str(item.get("id") or item.get("clave") or "").strip()
+        is_official = any(str(oi.get("id") or oi.get("clave") or "").strip() == ins_id for oi in official_ins)
+        if is_official:
+            meta_map[ins_id] = {
+                "cantidad": item.get("cantidad"),
+                "imagen": item.get("imagen", ""),
+                "especificaciones": item.get("especificaciones", ""),
+                "nombre": item.get("nombre"),
+                "unidad": item.get("unidad"),
+                "categoria": item.get("categoria")
+            }
+        else:
+            custom_ins.append(item)
+
+    local_db["insumos"] = custom_ins
+    local_db["insumos_meta"] = meta_map
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(local_db, f, indent=2, ensure_ascii=False)
     invalidate_catalog_cache("insumos")
@@ -898,7 +1036,10 @@ def api_get_insumos_postventa(user: dict = Depends(get_current_user)):
     if conn:
         try:
             cur = conn.cursor()
-            cur.execute("SELECT id, descripcion, unidad, tipo, especialidad, creado_por, cantidad FROM testing.insumos_postventa ORDER BY id;")
+            cur.execute("""
+                SELECT id, descripcion, unidad, tipo, especialidad, creado_por, cantidad, imagen, especificaciones 
+                FROM testing.insumos_postventa ORDER BY id;
+            """)
             rows = cur.fetchall()
             for r in rows:
                 insumos.append({
@@ -909,7 +1050,9 @@ def api_get_insumos_postventa(user: dict = Depends(get_current_user)):
                     "categoria": r[3],
                     "especialidad": r[4] or "",
                     "creado_por": r[5] or "",
-                    "cantidad": float(r[6] or 0)
+                    "cantidad": float(r[6] or 0),
+                    "imagen": r[7] or "",
+                    "especificaciones": r[8] or ""
                 })
         except Exception as e:
             print(f"Error fetching insumos_postventa: {e}", file=sys.stderr)
@@ -926,9 +1069,12 @@ async def api_post_insumos_postventa(request: Request, user: dict = Depends(get_
         try:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO testing.insumos_postventa (descripcion, unidad, tipo, especialidad, creado_por, cantidad)
-                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;
-            """, (data.get("nombre"), data.get("unidad"), data.get("categoria"), data.get("especialidad"), user.get("username"), data.get("cantidad", 0)))
+                INSERT INTO testing.insumos_postventa (descripcion, unidad, tipo, especialidad, creado_por, cantidad, imagen, especificaciones)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+            """, (
+                data.get("nombre"), data.get("unidad"), data.get("categoria"), data.get("especialidad"),
+                user.get("username"), data.get("cantidad", 0), data.get("imagen", ""), data.get("especificaciones", "")
+            ))
             new_id = cur.fetchone()[0]
             conn.commit()
         except Exception as e:
@@ -940,6 +1086,39 @@ async def api_post_insumos_postventa(request: Request, user: dict = Depends(get_
             conn.close()
     if new_id:
         return {"status": "success", "id": f"PV-{new_id}", "clave": f"PV-{new_id}"}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+
+@app.put("/api/insumos_postventa/{id_pv}")
+async def api_put_insumos_postventa(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
+    data = await request.json()
+    numeric_id = id_pv.replace("PV-", "") if id_pv.startswith("PV-") else id_pv
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE testing.insumos_postventa
+                SET descripcion = COALESCE(%s, descripcion),
+                    unidad = COALESCE(%s, unidad),
+                    tipo = COALESCE(%s, tipo),
+                    especialidad = COALESCE(%s, especialidad),
+                    imagen = COALESCE(%s, imagen),
+                    especificaciones = COALESCE(%s, especificaciones)
+                WHERE id = %s;
+            """, (
+                data.get("nombre"), data.get("unidad"), data.get("categoria"),
+                data.get("especialidad"), data.get("imagen"), data.get("especificaciones"),
+                int(numeric_id)
+            ))
+            conn.commit()
+            return {"status": "success"}
+        except Exception as e:
+            conn.rollback()
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        finally:
+            conn.close()
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
 
@@ -1179,15 +1358,23 @@ def api_get_traspasos_stats(user: dict = Depends(get_current_user)):
         # Construir filtro de permisos según rol
         where_clauses = []
         params = []
-        if user.get("rol", "") not in ("administrador", "residente", "cordinador"):
+        if user.get("rol", "") not in ("administrador", "residente", "cordinador", "coordinador", "control_obra"):
             user_cc_ids = [c.strip() for c in (user.get("cc_ids") or "").split(",") if c.strip()]
             user_empresa_ids = [e.strip() for e in (user.get("empresa_id") or "").split(",") if e.strip()]
             if user_cc_ids:
-                where_clauses.append("(cc_origen IN %s OR cc_destino IN %s OR solicitante = %s)")
-                params.extend([tuple(user_cc_ids), tuple(user_cc_ids), user.get("nombre", "")])
+                cc_perm_clauses = []
+                for cid in user_cc_ids:
+                    cc_perm_clauses.append("cc_origen = %s OR cc_origen LIKE %s OR cc_destino = %s OR cc_destino LIKE %s")
+                    params.extend([cid, f"{cid}%", cid, f"{cid}%"])
+                where_clauses.append(f"({' OR '.join(cc_perm_clauses)} OR solicitante = %s)")
+                params.append(user.get("nombre", ""))
             elif user_empresa_ids:
-                where_clauses.append("(empresa_origen IN %s OR empresa_destino IN %s)")
-                params.extend([tuple(user_empresa_ids), tuple(user_empresa_ids)])
+                emp_perm_clauses = []
+                for eid in user_empresa_ids:
+                    eid_clean = eid.lstrip('0') or '0'
+                    emp_perm_clauses.append("empresa_origen = %s OR empresa_origen = %s OR empresa_destino = %s OR empresa_destino = %s")
+                    params.extend([eid, eid_clean, eid, eid_clean])
+                where_clauses.append(f"({' OR '.join(emp_perm_clauses)})")
 
         if user.get("rol", "") not in ("administrador", "postventa"):
             where_clauses.append("solicitante NOT IN (SELECT nombre FROM testing.prof_usuarios WHERE rol = 'postventa')")

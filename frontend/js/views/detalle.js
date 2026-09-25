@@ -12,14 +12,16 @@ function resumenItems(t) {
       <tbody>
         ${t.items.map(i => {
           const ins = getInsumo(i.insumoId);
+          const foto = i.imagen || (ins ? ins.imagen : '');
+          const desc = i.comentario || (ins ? ins.especificaciones : '') || '—';
           return `<tr>
-            <td class="text-sm">${ins.clave}</td>
-            <td class="text-sm">${ins.nombre}</td>
-            ${hasExtra ? `<td class="text-sm">${i.comentario || '—'}</td>` : ''}
-            <td class="text-sm">${i.cantidad}</td>
-            <td class="text-sm">${ins.unidad}</td>
+            <td class="text-sm" style="font-family:monospace;font-weight:700;color:#1e40af">${ins.clave || i.insumoId}</td>
+            <td class="text-sm" style="font-weight:600">${ins.nombre}</td>
+            ${hasExtra ? `<td class="text-sm">${desc}</td>` : ''}
+            <td class="text-sm" style="font-weight:700">${i.cantidad}</td>
+            <td class="text-sm">${ins.unidad || 'Pieza'}</td>
             ${hasExtra ? `<td class="text-sm">$${parseFloat(i.precio||0).toFixed(2)}</td>` : ''}
-            ${hasImg ? `<td class="text-sm">${i.imagen ? `<img src="${i.imagen}" style="height:32px;border-radius:4px;cursor:pointer" onclick="window.open('${i.imagen}')" title="Ver foto">` : '—'}</td>` : ''}
+            ${hasImg ? `<td class="text-sm">${foto ? `<img src="${foto}" style="height:34px;width:34px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #cbd5e1" onclick="verFotoInsumo('${foto}', '${(ins ? ins.nombre : 'Foto').replace(/'/g, "\\'")}')" title="Ver foto">` : '—'}</td>` : ''}
           </tr>`;
         }).join('')}
       </tbody>
