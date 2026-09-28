@@ -664,6 +664,7 @@ async function guardarSolicitud() {
     const created = S.traspasos.find(x => x.fechaSolicitud === t.fechaSolicitud && x.solicitante === t.solicitante);
     const finalFolio = created ? created.folio : folio;
     const finalId = created ? created.id : t.id;
+    window.lastCreatedTraspaso = created || t;
 
     document.getElementById('content').innerHTML = `
     <div class="card" style="max-width:600px;margin:40px auto">

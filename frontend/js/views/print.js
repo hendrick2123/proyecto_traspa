@@ -3,8 +3,14 @@
 // =====================================================
 
 function imprimirTraspaso(id, hideAuthAndObs = false) {
-  const t = S.traspasos.find(x => x.id === id);
-  if (!t) return;
+  let t = S.traspasos.find(x => String(x.id) === String(id) || String(x.folio) === String(id) || x.id == id);
+  if (!t && window.lastCreatedTraspaso && (String(window.lastCreatedTraspaso.id) === String(id) || String(window.lastCreatedTraspaso.folio) === String(id) || window.lastCreatedTraspaso.id == id)) {
+    t = window.lastCreatedTraspaso;
+  }
+  if (!t) {
+    console.warn('imprimirTraspaso: No se encontró el traspaso con ID o folio:', id);
+    return;
+  }
 
   // Tenant check
   const empId = getUserEmpresaId();

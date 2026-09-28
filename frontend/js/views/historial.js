@@ -82,9 +82,9 @@ function renderHistorial() {
           <button id="btn-rol-origen" class="btn-rol" onclick="cambiarEmpresaRol('origen')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Origen</button>
           <button id="btn-rol-destino" class="btn-rol" onclick="cambiarEmpresaRol('destino')" style="border:none;background:transparent;color:#475569;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer">Destino</button>
         </div>
-        <input type="text" id="hist-buscar" placeholder="🔍 Buscar folio, solicitante, insumo..."
+        <input type="text" id="hist-buscar" placeholder="🔍 Buscar folio, obra, insumo, solicitante..."
                oninput="buscarHistorial()"
-               style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;width:260px;font-family:'Montserrat',sans-serif;height:32px">
+               style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;width:280px;font-family:'Montserrat',sans-serif;height:32px">
       </div>
     </div>
     <div class="table-wrap" id="hist-table">

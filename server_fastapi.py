@@ -398,18 +398,23 @@ def get_db_traspasos_paginated(
 
     if q:
         q_term = f"%{q}%"
-        # Búsqueda global en folio, solicitante, observaciones, cc_origen, cc_destino, empresas e insumos asociados
+        # Búsqueda global en folio, solicitante, observaciones, cc_origen, cc_destino, empresas, nombres de obra/CC e insumos asociados
         where_clauses.append("""
             (s.folio ILIKE %s OR s.solicitante ILIKE %s OR s.observaciones ILIKE %s 
              OR s.cc_origen ILIKE %s OR s.cc_destino ILIKE %s
              OR s.empresa_origen ILIKE %s OR s.empresa_destino ILIKE %s
+             OR EXISTS (
+                SELECT 1 FROM testing.prof_centros_costo cc_l
+                WHERE (cc_l.id_cc = s.cc_origen OR s.cc_origen LIKE cc_l.cc || '%%' OR cc_l.id_cc = s.cc_destino OR s.cc_destino LIKE cc_l.cc || '%%')
+                AND (cc_l.nombre_cc ILIKE %s OR cc_l.numero_nombre ILIKE %s)
+             )
              OR EXISTS (
                 SELECT 1 FROM testing.detalle_traspaso_insumos_v2 d2
                 WHERE d2.id_solicitud = s.id_solicitud 
                 AND (d2.clave_insumo ILIKE %s OR d2.nombre_insumo ILIKE %s OR d2.comentario_insumo ILIKE %s)
              ))
         """)
-        params.extend([q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term])
+        params.extend([q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term])
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)

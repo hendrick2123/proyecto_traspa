@@ -169,27 +169,50 @@ function modalRecibir(id) {
   );
 }
 
-function doRecibir(id) {
-  const nombre = document.getElementById('rxr-nombre').value.trim();
+async function doRecibir(id) {
+  const nombreInput = document.getElementById('rxr-nombre');
+  const nombre = nombreInput ? nombreInput.value.trim() : '';
   if (!nombre) return alert('Ingrese el nombre del receptor');
 
-  const t = S.traspasos.find(x => x.id === id);
+  const btn = document.querySelector('button[onclick^="doRecibir"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Confirmando...';
+  }
+
+  const t = S.traspasos.find(x => String(x.id) === String(id) || String(x.folio) === String(id) || x.id == id);
+  if (!t) return alert('No se encontró el traspaso');
+
   t.status         = 'recibido';
   t.receptor       = nombre;
   t.fechaRecepcion = now();
-  t.comentarioRec  = document.getElementById('rxr-comment').value.trim();
-  saveState('traspasos', t);
-  closeModal();
+  const commentInput = document.getElementById('rxr-comment');
+  t.comentarioRec  = commentInput ? commentInput.value.trim() : '';
 
-  openModal(
-    'Recepción Confirmada',
-    `<div style="text-align:center;padding:20px">
-       <div style="font-size:18px;font-weight:800;margin-bottom:4px">📦 Material Recibido</div>
-       <div style="font-size:22px;font-weight:900;color:var(--blue);margin-bottom:16px">${t.folio}</div>
-       <p style="color:#555;font-size:13px">El traspaso ha sido completado exitosamente.</p>
-     </div>`,
-    `<button class="btn btn-primary"   onclick="closeModal();imprimirTraspaso('${id}', true)">Imprimir Acuse de Recibo</button>
-     <button class="btn btn-secondary" onclick="closeModal();_renderRecepcionContent()">Continuar</button>`
-  );
-  updateBadges();
+  try {
+    await saveState('traspasos', t);
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
+    _renderRecepcionContent();
+    updateBadges();
+
+    openModal(
+      'Recepción Confirmada',
+      `<div style="text-align:center;padding:20px">
+         <div style="font-size:18px;font-weight:800;margin-bottom:4px">📦 Material Recibido</div>
+         <div style="font-size:22px;font-weight:900;color:var(--blue);margin-bottom:16px">${t.folio}</div>
+         <p style="color:#555;font-size:13px">El traspaso ha sido completado exitosamente y actualizado en el sistema.</p>
+       </div>`,
+      `<button class="btn btn-primary"   onclick="closeModal();imprimirTraspaso('${id}', true)">Imprimir Acuse de Recibo</button>
+       <button class="btn btn-secondary" onclick="closeModal();_renderRecepcionContent()">Continuar</button>`
+    );
+  } catch (err) {
+    console.error(err);
+    alert('Error al guardar la recepción: ' + (err.message || err));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Confirmar Recepción';
+    }
+  }
 }
