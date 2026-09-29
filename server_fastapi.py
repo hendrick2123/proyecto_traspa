@@ -250,10 +250,102 @@ def get_db_insumos():
         print(f"DB Warning insumos: {e}", file=sys.stderr, flush=True)
         _cache_set("insumos", INSUMOS_DEFAULT)
         return INSUMOS_DEFAULT
+def get_db_stock_by_cc(cc_id: str) -> dict:
+    if not cc_id:
+        return {}
+    conn = None
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cc_str = str(cc_id).strip()
+        
+        # ── CASO ESPECIAL: CC 999 (Almacén General) ──
+        if cc_str == '999' or cc_str.startswith('999'):
+            # 1. Salidas / traspasos desde Almacén General 999
+            cur.execute("""
+                SELECT d.clave_insumo, SUM(CAST(d.cantidad AS NUMERIC))
+                FROM testing.solicitudes_traspasos_v2 s
+                JOIN testing.detalle_traspaso_insumos_v2 d ON s.id_solicitud = d.id_solicitud
+                WHERE (s.cc_origen = '999' OR s.cc_origen LIKE '999%')
+                  AND s.estado IN ('pre_autorizado', 'autorizado', 'recibido')
+                GROUP BY d.clave_insumo;
+            """)
+            salidas_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+            
+            # 2. Entradas recibidas en Almacén General 999
+            cur.execute("""
+                SELECT d.clave_insumo, SUM(CAST(d.cantidad AS NUMERIC))
+                FROM testing.solicitudes_traspasos_v2 s
+                JOIN testing.detalle_traspaso_insumos_v2 d ON s.id_solicitud = d.id_solicitud
+                WHERE (s.cc_destino = '999' OR s.cc_destino LIKE '999%')
+                  AND s.estado = 'recibido'
+                GROUP BY d.clave_insumo;
+            """)
+            entradas_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+            
+            cur.close()
+            all_insumos = set(salidas_map.keys()) | set(entradas_map.keys())
+            stock_result = {}
+            for ins in all_insumos:
+                s = salidas_map.get(ins, 0.0)
+                e = entradas_map.get(ins, 0.0)
+                stock_result[ins] = max(0.0, e - s)
+            return stock_result
+            
+        # ── DEMÁS CENTROS DE COSTO (Obras / Desarrollos) ──
+        cur.execute("SELECT cc, source, nombre_cc FROM testing.prof_centros_costo WHERE id_cc = %s OR cc = %s LIMIT 1;", (cc_id, cc_id))
+        cc_row = cur.fetchone()
+        if not cc_row:
+            return {}
+        cc_num, cc_source, cc_nombre = cc_row
+        
+        # 1. Compras by insumo for this specific CC and company
+        cur.execute("""
+            SELECT insumo, SUM(CAST(cantidad AS NUMERIC))
+            FROM testing.prof_insumo_cantidad
+            WHERE cc = %s AND source = %s
+            GROUP BY insumo;
+        """, (cc_num, cc_source))
+        compras_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+        
+        # 2. Salidas / traspasos from this CC
+        cur.execute("""
+            SELECT d.clave_insumo, SUM(CAST(d.cantidad AS NUMERIC))
+            FROM testing.solicitudes_traspasos_v2 s
+            JOIN testing.detalle_traspaso_insumos_v2 d ON s.id_solicitud = d.id_solicitud
+            WHERE (s.cc_origen = %s OR (s.cc_origen LIKE %s AND s.cc_origen LIKE %s))
+              AND s.estado IN ('pre_autorizado', 'autorizado', 'recibido')
+            GROUP BY d.clave_insumo;
+        """, (cc_id, f"{cc_num}%", f"%{cc_source}%"))
+        salidas_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+        
+        # 3. Entradas traspaso to this CC
+        cur.execute("""
+            SELECT d.clave_insumo, SUM(CAST(d.cantidad AS NUMERIC))
+            FROM testing.solicitudes_traspasos_v2 s
+            JOIN testing.detalle_traspaso_insumos_v2 d ON s.id_solicitud = d.id_solicitud
+            WHERE (s.cc_destino = %s OR (s.cc_destino LIKE %s AND s.cc_destino LIKE %s))
+              AND s.estado = 'recibido'
+            GROUP BY d.clave_insumo;
+        """, (cc_id, f"{cc_num}%", f"%{cc_source}%"))
+        entradas_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+        
+        cur.close()
+        all_insumos = set(compras_map.keys()) | set(salidas_map.keys()) | set(entradas_map.keys())
+        stock_result = {}
+        for ins in all_insumos:
+            c = compras_map.get(ins, 0.0)
+            s = salidas_map.get(ins, 0.0)
+            e = entradas_map.get(ins, 0.0)
+            stock_result[ins] = max(0.0, c - s + e)
+        return stock_result
+    except Exception as e:
+        print(f"Error get_db_stock_by_cc: {e}", file=sys.stderr, flush=True)
+        return {}
     finally:
         if conn:
             try: conn.close()
             except: pass
+
 
 def get_db_traspasos(conn=None):
     close_conn = False
@@ -952,6 +1044,10 @@ async def api_post_centros_costo(request: Request, user: dict = Depends(get_curr
         json.dump(local_db, f, indent=2, ensure_ascii=False)
     invalidate_catalog_cache("centros_costo")
     return {"status": "success"}
+
+@app.get("/api/stock_cc")
+def api_get_stock_cc(cc: str = Query(...), user: dict = Depends(get_current_user)):
+    return {"cc": cc, "stock": get_db_stock_by_cc(cc)}
 
 # ─── Insumos REST Endpoints ───
 @app.get("/api/insumos")

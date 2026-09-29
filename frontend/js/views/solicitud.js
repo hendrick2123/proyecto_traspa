@@ -8,6 +8,8 @@ let solicitudTipo  = 'PRS';
 function renderNuevaSolicitud() {
   solicitudItems = [];
   solicitudTipo  = 'PRS';
+  currentOriStockMap = null;
+  currentOriCC = '';
 
   document.getElementById('content').innerHTML = `
   <div class="steps">
@@ -192,10 +194,38 @@ function buildCCOptionsAll() {
   ).join('');
 }
 
-function updateInfoOri() {
+function isAlmacenGeneral(ccId) {
+  if (!ccId) return false;
+  const str = String(ccId).trim();
+  return str === '999' || str.startsWith('999');
+}
+
+let currentOriStockMap = null;
+let currentOriCC = '';
+
+function getStockForInsumo(ins) {
+  if (!ins) return null;
+  const ccId = document.getElementById('sol-cc-ori')?.value || '';
+  // SOLO aplica control y muestra de stock cuando el origen es Almacén General (CC 999)
+  if (!isAlmacenGeneral(ccId)) return null;
+  
+  const insId = String(ins.clave || ins.id || '').trim();
+  if (currentOriStockMap !== null) {
+    return currentOriStockMap[insId] !== undefined ? currentOriStockMap[insId] : 0.0;
+  }
+  return (ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '') ? parseFloat(ins.cantidad) : null;
+}
+
+async function updateInfoOri() {
   const ccId = document.getElementById('sol-cc-ori').value;
+  currentOriCC = ccId;
   const info = document.getElementById('info-ori');
-  if (!ccId) { info.innerHTML = ''; return; }
+  if (!ccId) { 
+    info.innerHTML = ''; 
+    currentOriStockMap = null;
+    renderItems();
+    return; 
+  }
   const cc  = S.centrosCosto.find(c => c.id === ccId);
   const dev = cc && S.desarrollos ? S.desarrollos.find(d => d.id === cc.empresaId) : null;
   const devNombre = dev ? dev.nombre : (cc ? cc.empresaId : '');
@@ -204,6 +234,24 @@ function updateInfoOri() {
         🏢 ${devNombre}
        </span>`
     : '';
+
+  // Solo cuando el origen es Almacén General (CC 999) consultamos el stock de almacén general
+  if (isAlmacenGeneral(ccId)) {
+    try {
+      const token = sessionStorage.getItem('gu_token');
+      const res = await fetch(API_BASE + '/api/stock_cc?cc=' + encodeURIComponent(ccId), {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        currentOriStockMap = data.stock || {};
+      }
+    } catch (err) {
+      console.warn('Error al cargar stock de Almacén General:', err);
+    }
+  } else {
+    currentOriStockMap = null;
+  }
   renderItems();
 }
 
@@ -271,9 +319,9 @@ function _filterInsDropdown(i) {
           ? `<img src="${ins.imagen}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0" alt="">`
           : `<div style="width:32px;height:32px;background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#94a3b8;flex-shrink:0">📦</div>`;
         
-        const stockVal = (ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '') ? parseFloat(ins.cantidad) : null;
+        const stockVal = getStockForInsumo(ins);
         const stockBadge = stockVal !== null
-          ? `<span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:${stockVal > 0 ? '#dcfce7' : '#fee2e2'};color:${stockVal > 0 ? '#166534' : '#991b1b'}">Stock: ${stockVal}</span>`
+          ? `<span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:${stockVal > 0 ? '#dcfce7' : '#fee2e2'};color:${stockVal > 0 ? '#166534' : '#991b1b'}">Almacén: ${stockVal}</span>`
           : '';
 
         return `<div class="ins-dd-item" onmousedown="_selectInsumo(${i},'${ins.id || ins.clave}')" style="padding:8px 12px;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid #f1f5f9">
@@ -298,11 +346,9 @@ function _selectInsumo(i, insumoId) {
   solicitudItems[i].insumoId = insumoId;
   const ins = getInsumo(insumoId);
   if (ins) {
-    // Si el insumo del catálogo tiene foto y la fila no tiene foto personalizada, pre-cargarla
     if (ins.imagen && !solicitudItems[i].imagen) {
       solicitudItems[i].imagen = ins.imagen;
     }
-    // Si el insumo del catálogo tiene especificaciones y el comentario está vacío, sugerirlo
     if (ins.especificaciones && !solicitudItems[i].comentario) {
       solicitudItems[i].comentario = ins.especificaciones;
     }
@@ -325,11 +371,11 @@ function onCantidadItemChange(i, val) {
   const ins = solicitudItems[i].insumoId ? getInsumo(solicitudItems[i].insumoId) : null;
   const warnDiv = document.getElementById(`qty-warn-${i}`);
   const inputEl = document.getElementById(`qty-input-${i}`);
+  const stockVal = getStockForInsumo(ins);
   
-  if (ins && ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '') {
-    const maxStock = parseFloat(ins.cantidad);
+  if (stockVal !== null) {
+    const maxStock = stockVal;
     if (num > maxStock) {
-      // Auto-corregir al tope máximo de stock
       num = maxStock;
       if (inputEl) {
         inputEl.value = maxStock;
@@ -337,9 +383,8 @@ function onCantidadItemChange(i, val) {
       }
       if (warnDiv) {
         warnDiv.style.display = 'block';
-        warnDiv.innerHTML = `⚠️ Tope máximo: ${maxStock} ${ins.unidad || ''}. No se puede exceder el stock disponible.`;
+        warnDiv.innerHTML = `⚠️ Tope máximo: ${maxStock} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.`;
       }
-      // Notificar al usuario que se ajustó
       setTimeout(() => {
         if (warnDiv) warnDiv.style.display = 'block';
         if (inputEl) inputEl.style.borderColor = '#ddd';
@@ -348,6 +393,9 @@ function onCantidadItemChange(i, val) {
       if (warnDiv) warnDiv.style.display = 'none';
       if (inputEl) inputEl.style.borderColor = '#ddd';
     }
+  } else {
+    if (warnDiv) warnDiv.style.display = 'none';
+    if (inputEl) inputEl.style.borderColor = '#ddd';
   }
   
   solicitudItems[i].cantidad = num;
@@ -362,6 +410,9 @@ function renderItems() {
     return;
   }
 
+  const ccId = document.getElementById('sol-cc-ori')?.value || '';
+  const esAlmacen = isAlmacenGeneral(ccId);
+
   tbody.innerHTML = solicitudItems.map((item, i) => {
     const ins = item.insumoId ? getInsumo(item.insumoId) : null;
     const displayVal = ins ? (ins.clave || ins.id) + ' · ' + ins.nombre : '';
@@ -372,10 +423,19 @@ function renderItems() {
       ? `<img src="${fotoSrc}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #cbd5e1" onclick="verFotoInsumo('${fotoSrc}', '${(ins ? ins.nombre : 'Foto').replace(/'/g, "\\'")}')" title="Ver foto">` 
       : '';
 
-    // Stock
-    const hasStock = ins && ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '';
-    const stockVal = hasStock ? parseFloat(ins.cantidad) : null;
+    // Stock: SOLO aplica si el origen es Almacén General (999)
+    const stockVal = getStockForInsumo(ins);
+    const hasStock = esAlmacen && stockVal !== null;
     const isOverStock = hasStock && (parseFloat(item.cantidad) > stockVal);
+
+    let stockMsg = '';
+    if (ins && esAlmacen) {
+      if (stockVal > 0) {
+        stockMsg = `<div style="font-size:11px;font-weight:700;margin-top:3px;color:#16a34a">📦 Stock disponible en Almacén General: ${stockVal} ${ins.unidad || ''}</div>`;
+      } else {
+        stockMsg = `<div style="font-size:11px;font-weight:700;margin-top:3px;color:#ef4444">⚠️ Sin stock disponible en Almacén General (0 ${ins.unidad || ''})</div>`;
+      }
+    }
 
     return `<tr>
       <td style="vertical-align:top">
@@ -401,16 +461,16 @@ function renderItems() {
           </div>
         </div>
         ${ins && ins.especificaciones ? `<div style="font-size:11px;color:#475569;margin-top:4px;background:#f8fafc;padding:3px 8px;border-radius:4px;border-left:3px solid #3b82f6">🔍 <strong>Detalles de estado:</strong> ${ins.especificaciones}</div>` : ''}
-        ${hasStock ? `<div style="font-size:11px;font-weight:700;margin-top:3px;color:${stockVal > 0 ? '#16a34a' : '#ef4444'}">📦 Stock disponible en almacén: ${stockVal} ${ins.unidad || ''}</div>` : ''}
+        ${stockMsg}
       </td>
       <td style="vertical-align:top">
-        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${stockVal}"` : ''} step="any" value="${hasStock && parseFloat(item.cantidad) > stockVal ? stockVal : item.cantidad}"
+        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${stockVal}"` : ''} step="any" value="${hasStock && parseFloat(item.cantidad) > stockVal ? (stockVal > 0 ? stockVal : 1) : item.cantidad}"
                oninput="onCantidadItemChange(${i}, this.value)"
                style="border:1px solid ${isOverStock ? '#ef4444' : '#ddd'};border-radius:4px;padding:6px 8px;font-family:Montserrat,sans-serif;font-size:13px;width:100%;font-weight:600">
         <div id="qty-warn-${i}" style="display:${isOverStock ? 'block' : 'none'};color:#ef4444;font-size:10px;font-weight:700;margin-top:2px">
-          ⚠️ Tope máximo: ${stockVal} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible.
+          ⚠️ Tope máximo: ${stockVal} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.
         </div>
-        ${hasStock ? `<div style="font-size:10px;color:#64748b;margin-top:1px">Máx: ${stockVal} ${ins ? (ins.unidad || '') : ''}</div>` : ''}
+        ${hasStock ? `<div style="font-size:10px;color:#64748b;margin-top:1px">Máx en Almacén: ${stockVal} ${ins ? (ins.unidad || '') : ''}</div>` : ''}
       </td>
       <td id="ins-unit-${i}" style="color:#64748b;font-size:12px;font-weight:600;vertical-align:middle">${ins ? ins.unidad : '—'}</td>
       <td style="text-align:center;vertical-align:middle">
@@ -520,7 +580,7 @@ function _renderVisualPickerCards(items) {
           <span style="font-size:11px;margin-top:4px">Sin foto</span>
         </div>`;
 
-    const stockVal = (ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '') ? parseFloat(ins.cantidad) : null;
+    const stockVal = getStockForInsumo(ins);
     const stockBadge = stockVal !== null
       ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${stockVal > 0 ? '#dcfce7' : '#fee2e2'};color:${stockVal > 0 ? '#166534' : '#991b1b'}">Stock: ${stockVal} ${ins.unidad || ''}</span>`
       : '';
@@ -593,14 +653,16 @@ async function guardarSolicitud() {
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
   if (solicitudItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
 
-  // ── VALIDACIÓN CRÍTICA: Comprobar tope de stock disponible en inventario ──
-  for (const item of solicitudItems) {
-    const ins = getInsumo(item.insumoId);
-    if (ins && ins.cantidad !== undefined && ins.cantidad !== null && ins.cantidad !== '') {
-      const stockVal = parseFloat(ins.cantidad);
-      const reqVal = parseFloat(item.cantidad);
-      if (reqVal > stockVal) {
-        return alert(`❌ TOPE DE STOCK EXCEDIDO:\n\nEl insumo "${ins.nombre}" (${ins.clave || ins.id}) solo cuenta con un stock disponible de ${stockVal} ${ins.unidad || 'Pieza'} en almacén.\n\nNo se permite realizar un traspaso por ${reqVal} ${ins.unidad || 'Pieza'}.\n\nPor favor ajuste la cantidad para continuar.`);
+  // ── VALIDACIÓN CRÍTICA: Solo aplica tope de stock si el origen es Almacén General (999) ──
+  if (isAlmacenGeneral(ccOri)) {
+    for (const item of solicitudItems) {
+      const ins = getInsumo(item.insumoId);
+      const stockVal = getStockForInsumo(ins);
+      if (stockVal !== null) {
+        const reqVal = parseFloat(item.cantidad);
+        if (reqVal > stockVal) {
+          return alert(`❌ TOPE DE STOCK EXCEDIDO:\n\nEl insumo "${ins.nombre}" (${ins.clave || ins.id}) solo cuenta con un stock disponible de ${stockVal} ${ins.unidad || 'Pieza'} en Almacén General.\n\nNo se permite realizar una salida por ${reqVal} ${ins.unidad || 'Pieza'}.\n\nPor favor ajuste la cantidad para continuar.`);
+        }
       }
     }
   }
