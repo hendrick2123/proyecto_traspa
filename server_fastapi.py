@@ -250,6 +250,10 @@ def get_db_insumos():
         print(f"DB Warning insumos: {e}", file=sys.stderr, flush=True)
         _cache_set("insumos", INSUMOS_DEFAULT)
         return INSUMOS_DEFAULT
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 def get_db_stock_by_cc(cc_id: str) -> dict:
     if not cc_id:
         return {}
@@ -413,6 +417,10 @@ def get_db_traspasos(conn=None):
     except Exception as e:
         print(f"DB Warning get_db_traspasos: {e}", file=sys.stderr, flush=True)
         return []
+    finally:
+        if close_conn and conn:
+            try: conn.close()
+            except: pass
 
 def get_db_traspasos_paginated(
     page: int = 1,
@@ -835,10 +843,14 @@ def init_db():
                     REFERENCES testing.solicitudes_traspasos_v2(id_solicitud) ON DELETE CASCADE
             );
         """)
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close()
         print("DB: Tablas verificadas/creadas correctamente.", flush=True)
     except Exception as e:
         print(f"DB Warning init_db: {e}", file=sys.stderr, flush=True)
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 # ─── Geo / Browser checks ─────────────────────────────────────────────────────
 def check_geo_location(ip_address: str):
