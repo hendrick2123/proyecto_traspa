@@ -23,6 +23,11 @@ PORT = 8000
 FRONTEND_DIR = "frontend"
 DB_FILE = "db.json"
 
+import threading
+import logging
+
+db_file_lock = threading.Lock()
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 from db_config import DB_CONFIG, get_db_connection, release_db_connection, get_db_connection_ctx
 from app.core.security import check_geo_location_async, check_browser
 
@@ -264,12 +269,13 @@ def get_db_stock_by_cc(cc_id: str) -> dict:
         
         # ── CASO ESPECIAL: CC 999 (Almacén General) ──
         if cc_str == '999' or cc_str.startswith('999'):
-            # 1. Salidas / traspasos desde Almacén General 999
+            # 1. Salidas / traspasos desde Almacén General 999 a otros destinos
             cur.execute("""
                 SELECT d.clave_insumo, SUM(CAST(d.cantidad AS NUMERIC))
                 FROM testing.solicitudes_traspasos_v2 s
                 JOIN testing.detalle_traspaso_insumos_v2 d ON s.id_solicitud = d.id_solicitud
                 WHERE (s.cc_origen = '999' OR s.cc_origen LIKE '999%')
+                  AND (s.cc_destino != '999' AND s.cc_destino NOT LIKE '999%')
                   AND s.estado IN ('pre_autorizado', 'autorizado', 'recibido')
                 GROUP BY d.clave_insumo;
             """)
@@ -498,23 +504,17 @@ def get_db_traspasos_paginated(
 
     if q:
         q_term = f"%{q}%"
-        # Búsqueda global en folio, solicitante, observaciones, cc_origen, cc_destino, empresas, nombres de obra/CC e insumos asociados
+        # Búsqueda global optimizada: sin JOINS destructivos (ETL-friendly)
         where_clauses.append("""
             (s.folio ILIKE %s OR s.solicitante ILIKE %s OR s.observaciones ILIKE %s 
              OR s.cc_origen ILIKE %s OR s.cc_destino ILIKE %s
-             OR s.empresa_origen ILIKE %s OR s.empresa_destino ILIKE %s
-             OR EXISTS (
-                SELECT 1 FROM testing.prof_centros_costo cc_l
-                WHERE (cc_l.id_cc = s.cc_origen OR s.cc_origen LIKE cc_l.cc || '%%' OR cc_l.id_cc = s.cc_destino OR s.cc_destino LIKE cc_l.cc || '%%')
-                AND (cc_l.nombre_cc ILIKE %s OR cc_l.numero_nombre ILIKE %s)
-             )
              OR EXISTS (
                 SELECT 1 FROM testing.detalle_traspaso_insumos_v2 d2
                 WHERE d2.id_solicitud = s.id_solicitud 
-                AND (d2.clave_insumo ILIKE %s OR d2.nombre_insumo ILIKE %s OR d2.comentario_insumo ILIKE %s)
+                AND (d2.clave_insumo ILIKE %s OR d2.nombre_insumo ILIKE %s)
              ))
         """)
-        params.extend([q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term, q_term])
+        params.extend([q_term, q_term, q_term, q_term, q_term, q_term, q_term])
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
@@ -663,6 +663,8 @@ def save_db_traspaso(t: dict, conn=None):
 
         if "items" in t:
             status_is_recibido = (t.get("status") == "recibido")
+            valores_a_insertar = []
+            import psycopg2.extras
             for item in t.get("items", []):
                 insumo_id = str(item.get("insumoId","")).strip()
                 nombre    = item.get("nombre","")
@@ -678,15 +680,14 @@ def save_db_traspaso(t: dict, conn=None):
                     except Exception: pass
                 if not nombre: nombre = insumo_id
                 if not unidad: unidad = "Pieza"
-                cur.execute("""
-                    INSERT INTO testing.detalle_traspaso_insumos_v2
-                        (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
-                """, (sol_id, insumo_id, nombre, cant_req, unidad,
-                      item.get("precio",0.0), item.get("comentario",""), item.get("imagen","")))
+                valores_a_insertar.append((
+                    sol_id, insumo_id, nombre, cant_req, unidad,
+                    item.get("precio",0.0), item.get("comentario",""), item.get("imagen","")
+                ))
 
-                # If status is recibido, update stock in database/local_db
-                if status_is_recibido and cant_req > 0:
+                # If status is recibido, update stock in database/local_db (no aplica a 999 al 999)
+                is_999_a_999 = (str(t.get("ccOrigen", "")).strip().startswith("999") and str(t.get("ccDestino", "")).strip().startswith("999"))
+                if status_is_recibido and cant_req > 0 and not is_999_a_999:
                     try:
                         if insumo_id.startswith("PV-") or (insumo_id.isdigit() and len(insumo_id) <= 6):
                             numeric_pv_id = int(insumo_id.replace("PV-", ""))
@@ -726,35 +727,47 @@ def save_db_traspaso(t: dict, conn=None):
 
                             # 2. Also check/update local_db meta
                             if os.path.exists(DB_FILE):
-                                with open(DB_FILE, "r", encoding="utf-8") as f:
-                                    ldb = json.load(f)
-                                meta_map = ldb.get("insumos_meta", {})
-                                custom_list = ldb.get("insumos", [])
-                                updated = False
-                                if insumo_id in meta_map and meta_map[insumo_id].get("cantidad") is not None:
-                                    cur_stk = float(meta_map[insumo_id]["cantidad"] or 0)
-                                    if cant_req > cur_stk:
-                                        raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cur_stk}) para el insumo {nombre}")
-                                    meta_map[insumo_id]["cantidad"] = max(0.0, cur_stk - cant_req)
-                                    updated = True
-                                for c_ins in custom_list:
-                                    if str(c_ins.get("id") or c_ins.get("clave") or "").strip() == insumo_id and c_ins.get("cantidad") is not None:
-                                        cur_stk = float(c_ins["cantidad"] or 0)
+                                with db_file_lock:
+                                    with open(DB_FILE, "r", encoding="utf-8") as f:
+                                        ldb = json.load(f)
+                                    meta_map = ldb.get("insumos_meta", {})
+                                    custom_list = ldb.get("insumos", [])
+                                    updated = False
+                                    if insumo_id in meta_map and meta_map[insumo_id].get("cantidad") is not None:
+                                        cur_stk = float(meta_map[insumo_id]["cantidad"] or 0)
                                         if cant_req > cur_stk:
                                             raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cur_stk}) para el insumo {nombre}")
-                                        c_ins["cantidad"] = max(0.0, cur_stk - cant_req)
+                                        meta_map[insumo_id]["cantidad"] = max(0.0, cur_stk - cant_req)
                                         updated = True
-                                if updated:
-                                    ldb["insumos_meta"] = meta_map
-                                    ldb["insumos"] = custom_list
-                                    with open(DB_FILE, "w", encoding="utf-8") as f:
-                                        json.dump(ldb, f, indent=2, ensure_ascii=False)
+                                    for c_ins in custom_list:
+                                        if str(c_ins.get("id") or c_ins.get("clave") or "").strip() == insumo_id and c_ins.get("cantidad") is not None:
+                                            cur_stk = float(c_ins["cantidad"] or 0)
+                                            if cant_req > cur_stk:
+                                                raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({cur_stk}) para el insumo {nombre}")
+                                            c_ins["cantidad"] = max(0.0, cur_stk - cant_req)
+                                            updated = True
+                                    if updated:
+                                        ldb["insumos_meta"] = meta_map
+                                        ldb["insumos"] = custom_list
+                                        with open(DB_FILE, "w", encoding="utf-8") as f:
+                                            json.dump(ldb, f, indent=2, ensure_ascii=False)
                             
                             # 3. Invalidar cache de insumos para reflejar nuevo stock
                             invalidate_catalog_cache("insumos")
                     except Exception as err_stock:
                         print(f"Warning stock check/deduction: {err_stock}", file=sys.stderr, flush=True)
                         raise err_stock
+
+        if valores_a_insertar:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO testing.detalle_traspaso_insumos_v2
+                    (id_solicitud, clave_insumo, nombre_insumo, cantidad, unidad, precio, comentario_insumo, imagen)
+                VALUES %s;
+                """,
+                valores_a_insertar
+            )
 
         conn.commit(); cur.close()
         if close_conn: conn.close()
@@ -934,6 +947,13 @@ async def lifespan(app: FastAPI):
 # ─── FastAPI App ──────────────────────────────────────────────────────────────
 app = FastAPI(title="Sistema de Traspasos – Grupo Urbania", version="2.0.0", lifespan=lifespan)
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Falla crítica en {request.url.path}: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Ocurrió un error interno en el servidor. El equipo técnico ha sido notificado."}
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,

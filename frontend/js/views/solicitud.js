@@ -205,9 +205,17 @@ let currentOriCC = '';
 
 function getStockForInsumo(ins) {
   if (!ins) return null;
-  const ccId = document.getElementById('sol-cc-ori')?.value || '';
-  // SOLO aplica control y muestra de stock cuando el origen es Almacén General (CC 999)
-  if (!isAlmacenGeneral(ccId)) return null;
+  const ccOri = document.getElementById('sol-cc-ori')?.value || '';
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
+  
+  // Si el traspaso es del centro de costo 999 al 999 (Almacén General a Almacén General),
+  // se permite cargar cualquier insumo y cualquier cantidad sin restricción de stock
+  if (isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes)) {
+    return null;
+  }
+
+  // SOLO aplica control y muestra de stock cuando el origen es Almacén General (CC 999) hacia otro destino
+  if (!isAlmacenGeneral(ccOri)) return null;
   
   const insId = String(ins.clave || ins.id || '').trim();
   if (currentOriStockMap !== null) {
@@ -218,6 +226,7 @@ function getStockForInsumo(ins) {
 
 async function updateInfoOri() {
   const ccId = document.getElementById('sol-cc-ori').value;
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
   currentOriCC = ccId;
   const info = document.getElementById('info-ori');
   if (!ccId) { 
@@ -235,8 +244,8 @@ async function updateInfoOri() {
        </span>`
     : '';
 
-  // Solo cuando el origen es Almacén General (CC 999) consultamos el stock de almacén general
-  if (isAlmacenGeneral(ccId)) {
+  // Solo cuando el origen es Almacén General (CC 999) y el destino NO es 999 consultamos el stock de almacén general
+  if (isAlmacenGeneral(ccId) && !isAlmacenGeneral(ccDes)) {
     try {
       const token = sessionStorage.getItem('gu_token');
       const res = await fetch(API_BASE + '/api/stock_cc?cc=' + encodeURIComponent(ccId), {
@@ -257,6 +266,7 @@ async function updateInfoOri() {
 
 function updateInfoDes() {
   const ccId = document.getElementById('sol-cc-des').value;
+  const ccOri = document.getElementById('sol-cc-ori')?.value || '';
   const info = document.getElementById('info-des');
   if (!ccId) { info.innerHTML = ''; return; }
   const cc  = S.centrosCosto.find(c => c.id === ccId);
@@ -267,6 +277,25 @@ function updateInfoDes() {
         🏢 ${devNombre}
        </span>`
     : '';
+
+  // Si ambos son 999, limpiamos stock map para permitir libre captura
+  if (isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccId)) {
+    currentOriStockMap = null;
+  } else if (isAlmacenGeneral(ccOri) && !isAlmacenGeneral(ccId) && !currentOriStockMap) {
+    // Si el origen es 999 y el destino NO es 999, cargar stock de almacén si aún no está cargado
+    const token = sessionStorage.getItem('gu_token');
+    fetch(API_BASE + '/api/stock_cc?cc=' + encodeURIComponent(ccOri), {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (d && d.stock) {
+        currentOriStockMap = d.stock;
+        renderItems();
+      }
+    })
+    .catch(() => {});
+  }
   renderItems();
 }
 
@@ -280,6 +309,20 @@ let _insSearchActive = null;
 
 function _getInsumosFiltered() {
   const user = getUser();
+  const ccOri = document.getElementById('sol-cc-ori')?.value || '';
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
+
+  // En traspasos de 999 al 999 se permite cualquier insumo de todos los catálogos disponibles
+  if (isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes)) {
+    const base = S.insumos || [];
+    if (S.insumos_postventa && S.insumos_postventa.length > 0) {
+      const existingIds = new Set(base.map(i => String(i.clave || i.id).trim()));
+      const extra = S.insumos_postventa.filter(i => !existingIds.has(String(i.clave || i.id).trim()));
+      return [...base, ...extra];
+    }
+    return base;
+  }
+
   if (user && user.rol === 'postventa') {
     return S.insumos_postventa || [];
   }
@@ -344,6 +387,15 @@ function _filterInsDropdown(i) {
 
 function _selectInsumo(i, insumoId) {
   solicitudItems[i].insumoId = insumoId;
+  const ccOri = document.getElementById('sol-cc-ori')?.value || '';
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
+  const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
+  if (es999a999) {
+    if (!solicitudItems[i].cantidad || parseFloat(solicitudItems[i].cantidad) <= 0) {
+      solicitudItems[i].cantidad = 1;
+    }
+  }
+
   const ins = getInsumo(insumoId);
   if (ins) {
     if (ins.imagen && !solicitudItems[i].imagen) {
@@ -368,12 +420,17 @@ document.addEventListener('click', function(e) {
 function onCantidadItemChange(i, val) {
   let num = parseFloat(val) || 0;
   
+  const ccOri = document.getElementById('sol-cc-ori')?.value || '';
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
+  const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
+
   const ins = solicitudItems[i].insumoId ? getInsumo(solicitudItems[i].insumoId) : null;
   const warnDiv = document.getElementById(`qty-warn-${i}`);
   const inputEl = document.getElementById(`qty-input-${i}`);
   const stockVal = getStockForInsumo(ins);
   
-  if (stockVal !== null) {
+  // En transferencias de 999 al 999 no existe límite de stock
+  if (!es999a999 && stockVal !== null) {
     const maxStock = stockVal;
     if (num > maxStock) {
       num = maxStock;
@@ -411,7 +468,17 @@ function renderItems() {
   }
 
   const ccId = document.getElementById('sol-cc-ori')?.value || '';
-  const esAlmacen = isAlmacenGeneral(ccId);
+  const ccDes = document.getElementById('sol-cc-des')?.value || '';
+  const es999a999 = isAlmacenGeneral(ccId) && isAlmacenGeneral(ccDes);
+  const esAlmacen = isAlmacenGeneral(ccId) && !es999a999;
+
+  if (es999a999) {
+    solicitudItems.forEach(it => {
+      if (!it.cantidad || parseFloat(it.cantidad) <= 0) {
+        it.cantidad = 1;
+      }
+    });
+  }
 
   tbody.innerHTML = solicitudItems.map((item, i) => {
     const ins = item.insumoId ? getInsumo(item.insumoId) : null;
@@ -423,13 +490,15 @@ function renderItems() {
       ? `<img src="${fotoSrc}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #cbd5e1" onclick="verFotoInsumo('${fotoSrc}', '${(ins ? ins.nombre : 'Foto').replace(/'/g, "\\'")}')" title="Ver foto">` 
       : '';
 
-    // Stock: SOLO aplica si el origen es Almacén General (999)
+    // Stock: SOLO aplica si el origen es Almacén General (999) hacia otro destino distinto
     const stockVal = getStockForInsumo(ins);
     const hasStock = esAlmacen && stockVal !== null;
     const isOverStock = hasStock && (parseFloat(item.cantidad) > stockVal);
 
     let stockMsg = '';
-    if (ins && esAlmacen) {
+    if (es999a999 && ins) {
+      stockMsg = `<div style="font-size:11px;font-weight:600;margin-top:3px;color:#2563eb">ℹ️ Almacén General (999 ➔ 999): Carga libre sin restricción de stock</div>`;
+    } else if (ins && esAlmacen && stockVal !== null) {
       if (stockVal > 0) {
         stockMsg = `<div style="font-size:11px;font-weight:700;margin-top:3px;color:#16a34a">📦 Stock disponible en Almacén General: ${stockVal} ${ins.unidad || ''}</div>`;
       } else {
@@ -464,7 +533,7 @@ function renderItems() {
         ${stockMsg}
       </td>
       <td style="vertical-align:top">
-        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${stockVal}"` : ''} step="any" value="${hasStock && parseFloat(item.cantidad) > stockVal ? (stockVal > 0 ? stockVal : 1) : item.cantidad}"
+        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${stockVal}"` : ''} step="any" value="${hasStock && parseFloat(item.cantidad) > stockVal ? (stockVal > 0 ? stockVal : 1) : (item.cantidad || 1)}"
                oninput="onCantidadItemChange(${i}, this.value)"
                style="border:1px solid ${isOverStock ? '#ef4444' : '#ddd'};border-radius:4px;padding:6px 8px;font-family:Montserrat,sans-serif;font-size:13px;width:100%;font-weight:600">
         <div id="qty-warn-${i}" style="display:${isOverStock ? 'block' : 'none'};color:#ef4444;font-size:10px;font-weight:700;margin-top:2px">
@@ -647,14 +716,15 @@ async function guardarSolicitud() {
   if (!sol)                                             return alert('Ingrese el nombre del solicitante');
   if (!ccOri)                                           return alert('Seleccione el centro de costo de origen');
   if (!ccDes)                                           return alert('Seleccione el centro de costo de destino');
-  if (ccOri === ccDes && ccOri !== '999' && ccOri !== '998') return alert('El origen y destino no pueden ser iguales');
+  if (ccOri === ccDes && !isAlmacenGeneral(ccOri) && ccOri !== '998') return alert('El origen y destino no pueden ser iguales');
 
   if (solicitudItems.length === 0)                      return alert('Agregue al menos un insumo');
   if (solicitudItems.some(i => !i.insumoId))            return alert('Seleccione el insumo en todas las filas');
   if (solicitudItems.some(i => !i.cantidad || i.cantidad <= 0)) return alert('Todas las cantidades deben ser mayores a cero');
 
-  // ── VALIDACIÓN CRÍTICA: Solo aplica tope de stock si el origen es Almacén General (999) ──
-  if (isAlmacenGeneral(ccOri)) {
+  // ── VALIDACIÓN CRÍTICA: Solo aplica tope de stock si el origen es Almacén General (999) hacia otro destino distinto (no aplica en 999 al 999) ──
+  const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
+  if (isAlmacenGeneral(ccOri) && !es999a999) {
     for (const item of solicitudItems) {
       const ins = getInsumo(item.insumoId);
       const stockVal = getStockForInsumo(ins);
