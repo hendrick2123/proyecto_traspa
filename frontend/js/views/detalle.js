@@ -98,10 +98,10 @@ function verDetalle(id) {
     `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
      ${(function() {
        const u = getUser();
-       const canManage = u && ['residente', 'control_obra', 'administrador', 'almacenista'].includes(u.rol);
+       const canManage = u && ['control_obra', 'administrador'].includes(u.rol);
        if (!canManage) return '';
        let extraBtns = '';
-       if (t.status === 'autorizado' && ['residente', 'control_obra', 'administrador'].includes(u.rol)) {
+       if (t.status === 'autorizado') {
          extraBtns += `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="closeModal();revertirTraspasoAPendiente('${t.id}')">↩️ Revertir a Pendiente</button>`;
        }
        if (t.status !== 'recibido' && t.status !== 'rechazado' && t.status !== 'devuelto_total') {

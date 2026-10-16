@@ -223,7 +223,7 @@ function renderHistorialTable(list) {
   }
   const user = getUser();
   const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista' || user.rol === 'control_obra');
-  const canCancel = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista' || user.rol === 'control_obra');
+  const canCancel = user && (user.rol === 'control_obra' || user.rol === 'administrador');
 
   return `<table>
     <thead>
@@ -284,16 +284,16 @@ function modalEditarTraspaso(id) {
   _editItemsTemp = (t.items || []).map(i => ({ ...i }));
 
   const isMandadoEditar = (t.status === 'mandado_editar');
-  const canRevertir = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador') && t.status === 'autorizado';
-  const canCancel = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista') && (t.status !== 'recibido' && t.status !== 'rechazado');
+  const canRevertir = user && (user.rol === 'control_obra' || user.rol === 'administrador') && t.status === 'autorizado';
+  const canCancel = user && (user.rol === 'control_obra' || user.rol === 'administrador') && (t.status !== 'recibido' && t.status !== 'rechazado');
 
   const alertHeader = isMandadoEditar ? `
     <div class="alert alert-warning" style="margin-bottom:14px;background:#ffedd5;color:#c2410c;border:1px solid #fdba74;padding:10px 14px;border-radius:6px;font-size:12px">
       <strong>⚠️ Traspaso Devuelto para Edición:</strong> Modifique los datos e insumos necesarios. Al guardar los cambios, el traspaso volverá a enviarse al circuito normal de autorización.
     </div>
-  ` : (t.status === 'autorizado' ? `
+  ` : ((t.status === 'autorizado' && (canRevertir || canCancel)) ? `
     <div class="alert alert-info" style="margin-bottom:14px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;padding:10px 14px;border-radius:6px;font-size:12px">
-      <strong>ℹ️ Vale actualmente AUTORIZADO:</strong> Si modifica los insumos o el solicitante, el sistema le ofrecerá reenviarlo al módulo de Autorizaciones. También puede cancelarlo directamente usando el botón rojo "🚫 Cancelar Vale".
+      <strong>ℹ️ Vale actualmente AUTORIZADO:</strong> Como Control de Obra, al guardar cambios puede restablecerlo a Autorizaciones o usar los botones de abajo para revertirlo o cancelarlo.
     </div>
   ` : '');
 
@@ -522,7 +522,7 @@ async function guardarEdicionTraspaso(id) {
       t.fechaRecepcion = null;
       t.comentarioRec = null;
       reenviado = true;
-    } else if (wasAutorizado) {
+    } else if (wasAutorizado && user && (user.rol === 'control_obra' || user.rol === 'administrador')) {
       const resp = confirm(`Este traspaso ya estaba AUTORIZADO.\n\n¿Desea restablecerlo a "Pendiente de Autorización" para que las firmas se vuelvan a emitir con los nuevos cambios?\n\n• Aceptar: Se eliminan las firmas y regresa al módulo de Autorizaciones.\n• Cancelar: Se guardan los cambios manteniendo el estado Autorizado.`);
       if (resp) {
         t.status = 'pendiente';
@@ -565,9 +565,9 @@ async function guardarEdicionTraspaso(id) {
 
 async function cancelarTraspaso(id) {
   const user = getUser();
-  const allowed = ['residente', 'control_obra', 'administrador', 'almacenista'];
+  const allowed = ['control_obra', 'administrador'];
   if (!user || !allowed.includes(user.rol)) {
-    return alert('No tienes permisos para cancelar traspasos.');
+    return alert('Solo el rol de Control de Obra tiene permisos para cancelar traspasos.');
   }
 
   const t = S.traspasos.find(x => x.id === id);
@@ -612,9 +612,9 @@ async function cancelarTraspaso(id) {
 
 async function revertirTraspasoAPendiente(id) {
   const user = getUser();
-  const allowed = ['residente', 'control_obra', 'administrador'];
+  const allowed = ['control_obra', 'administrador'];
   if (!user || !allowed.includes(user.rol)) {
-    return alert('No tienes permisos para revertir autorizaciones.');
+    return alert('Solo el rol de Control de Obra tiene permisos para revertir autorizaciones.');
   }
 
   const t = S.traspasos.find(x => x.id === id);
