@@ -385,18 +385,112 @@ function _filterInsDropdown(i) {
     : '<div style="padding:12px;color:#aaa;font-size:12px;text-align:center">Sin resultados coincidentes</div>';
 }
 
+function getInsumoKey(insOrId) {
+  if (!insOrId) return '';
+  const ins = (typeof insOrId === 'object' && insOrId !== null) ? insOrId : getInsumo(insOrId);
+  return String(ins.clave || ins.id || insOrId).trim();
+}
+
+function getTotalRequestedForInsumo(insKey, excludeIndex = -1) {
+  if (!insKey) return 0;
+  let sum = 0;
+  solicitudItems.forEach((it, idx) => {
+    if (idx === excludeIndex || !it.insumoId) return;
+    const itKey = getInsumoKey(it.insumoId);
+    if (itKey === insKey) {
+      sum += (parseFloat(it.cantidad) || 0);
+    }
+  });
+  return sum;
+}
+
+function _updateAllStockWarningsForInsumo(insKey, stockVal, ins) {
+  if (!insKey || stockVal === null) return;
+  
+  const matchingIndices = [];
+  let totalSolicitado = 0;
+  
+  solicitudItems.forEach((it, idx) => {
+    if (getInsumoKey(it.insumoId) === insKey) {
+      matchingIndices.push(idx);
+      totalSolicitado += (parseFloat(it.cantidad) || 0);
+    }
+  });
+
+  const isDuplicate = matchingIndices.length > 1;
+  const isOver = totalSolicitado > stockVal;
+
+  matchingIndices.forEach(idx => {
+    const inputEl = document.getElementById(`qty-input-${idx}`);
+    const warnDiv = document.getElementById(`qty-warn-${idx}`);
+    const dupDiv  = document.getElementById(`qty-dup-info-${idx}`);
+    const maxDiv  = document.getElementById(`qty-max-info-${idx}`);
+
+    const cantThisRow = parseFloat(solicitudItems[idx].cantidad) || 0;
+    const cantOtras = totalSolicitado - cantThisRow;
+    const maxPermitidoFila = Math.max(0, stockVal - cantOtras);
+
+    if (dupDiv) {
+      if (isDuplicate) {
+        dupDiv.style.display = 'block';
+        dupDiv.style.color = isOver ? '#ef4444' : '#2563eb';
+        dupDiv.innerHTML = `ℹ️ Insumo en ${matchingIndices.length} filas · Suma total: <strong>${totalSolicitado}</strong> / ${stockVal} ${ins ? (ins.unidad || '') : ''}`;
+      } else {
+        dupDiv.style.display = 'none';
+      }
+    }
+
+    if (maxDiv) {
+      if (isDuplicate) {
+        maxDiv.innerHTML = `Máx restante para esta fila: <strong>${maxPermitidoFila}</strong> (Total Almacén: ${stockVal} ${ins ? (ins.unidad || '') : ''})`;
+      } else {
+        maxDiv.innerHTML = `Máx en Almacén: ${stockVal} ${ins ? (ins.unidad || '') : ''}`;
+      }
+    }
+
+    if (inputEl) {
+      inputEl.max = maxPermitidoFila;
+      inputEl.style.borderColor = (isOver || cantThisRow > maxPermitidoFila) ? '#ef4444' : '#ddd';
+    }
+
+    if (warnDiv) {
+      if (isOver) {
+        warnDiv.style.display = 'block';
+        warnDiv.innerHTML = `⚠️ Tope excedido: La suma total (${totalSolicitado} ${ins ? (ins.unidad || '') : ''}) supera el stock disponible en Almacén General (${stockVal} ${ins ? (ins.unidad || '') : ''}).`;
+      } else if (cantThisRow > maxPermitidoFila) {
+        warnDiv.style.display = 'block';
+        warnDiv.innerHTML = `⚠️ Tope máximo: Ya se apartaron ${cantOtras} en otras filas. Solo quedan ${maxPermitidoFila} ${ins ? (ins.unidad || '') : ''} disponibles.`;
+      } else {
+        warnDiv.style.display = 'none';
+      }
+    }
+  });
+}
+
 function _selectInsumo(i, insumoId) {
   solicitudItems[i].insumoId = insumoId;
   const ccOri = document.getElementById('sol-cc-ori')?.value || '';
   const ccDes = document.getElementById('sol-cc-des')?.value || '';
   const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
+  const ins = getInsumo(insumoId);
+  const insKey = ins ? getInsumoKey(ins) : '';
+  const stockVal = getStockForInsumo(ins);
+
   if (es999a999) {
     if (!solicitudItems[i].cantidad || parseFloat(solicitudItems[i].cantidad) <= 0) {
       solicitudItems[i].cantidad = 1;
     }
+  } else if (stockVal !== null && insKey) {
+    const cantOtras = getTotalRequestedForInsumo(insKey, i);
+    const remanente = Math.max(0, stockVal - cantOtras);
+    const currCant = parseFloat(solicitudItems[i].cantidad) || 0;
+    if (currCant <= 0) {
+      solicitudItems[i].cantidad = remanente > 0 ? (remanente >= 1 ? 1 : remanente) : 0;
+    } else if (currCant > remanente) {
+      solicitudItems[i].cantidad = remanente;
+    }
   }
 
-  const ins = getInsumo(insumoId);
   if (ins) {
     if (ins.imagen && !solicitudItems[i].imagen) {
       solicitudItems[i].imagen = ins.imagen;
@@ -418,38 +512,49 @@ document.addEventListener('click', function(e) {
 });
 
 function onCantidadItemChange(i, val) {
-  let num = parseFloat(val) || 0;
+  let num = parseFloat(val);
+  if (isNaN(num) || num < 0) num = 0;
   
   const ccOri = document.getElementById('sol-cc-ori')?.value || '';
   const ccDes = document.getElementById('sol-cc-des')?.value || '';
   const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
 
   const ins = solicitudItems[i].insumoId ? getInsumo(solicitudItems[i].insumoId) : null;
+  const insKey = ins ? getInsumoKey(ins) : '';
   const warnDiv = document.getElementById(`qty-warn-${i}`);
   const inputEl = document.getElementById(`qty-input-${i}`);
   const stockVal = getStockForInsumo(ins);
   
   // En transferencias de 999 al 999 no existe límite de stock
-  if (!es999a999 && stockVal !== null) {
-    const maxStock = stockVal;
-    if (num > maxStock) {
-      num = maxStock;
+  if (!es999a999 && stockVal !== null && insKey) {
+    const cantOtras = getTotalRequestedForInsumo(insKey, i);
+    const maxPermitidoFila = Math.max(0, stockVal - cantOtras);
+
+    if (num > maxPermitidoFila) {
+      num = maxPermitidoFila;
       if (inputEl) {
-        inputEl.value = maxStock;
+        inputEl.value = num;
         inputEl.style.borderColor = '#f59e0b';
       }
       if (warnDiv) {
         warnDiv.style.display = 'block';
-        warnDiv.innerHTML = `⚠️ Tope máximo: ${maxStock} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.`;
+        warnDiv.innerHTML = cantOtras > 0
+          ? `⚠️ Tope máximo: Solo quedan ${maxPermitidoFila} ${ins ? (ins.unidad || '') : ''} disponibles (ya se tienen ${cantOtras} en otras filas). No se puede exceder el stock total (${stockVal}).`
+          : `⚠️ Tope máximo: ${stockVal} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.`;
       }
       setTimeout(() => {
-        if (warnDiv) warnDiv.style.display = 'block';
-        if (inputEl) inputEl.style.borderColor = '#ddd';
+        if (warnDiv && (parseFloat(solicitudItems[i]?.cantidad || 0) <= maxPermitidoFila)) {
+          if (inputEl) inputEl.style.borderColor = '#ddd';
+        }
       }, 2500);
     } else {
       if (warnDiv) warnDiv.style.display = 'none';
       if (inputEl) inputEl.style.borderColor = '#ddd';
     }
+
+    solicitudItems[i].cantidad = num;
+    _updateAllStockWarningsForInsumo(insKey, stockVal, ins);
+    return;
   } else {
     if (warnDiv) warnDiv.style.display = 'none';
     if (inputEl) inputEl.style.borderColor = '#ddd';
@@ -482,6 +587,7 @@ function renderItems() {
 
   tbody.innerHTML = solicitudItems.map((item, i) => {
     const ins = item.insumoId ? getInsumo(item.insumoId) : null;
+    const insKey = ins ? getInsumoKey(ins) : '';
     const displayVal = ins ? (ins.clave || ins.id) + ' · ' + ins.nombre : '';
     
     // Foto
@@ -493,7 +599,17 @@ function renderItems() {
     // Stock: SOLO aplica si el origen es Almacén General (999) hacia otro destino distinto
     const stockVal = getStockForInsumo(ins);
     const hasStock = esAlmacen && stockVal !== null;
-    const isOverStock = hasStock && (parseFloat(item.cantidad) > stockVal);
+    const totalSolicitadoInsumo = insKey ? getTotalRequestedForInsumo(insKey) : 0;
+    const cantOtrasFilas = insKey ? getTotalRequestedForInsumo(insKey, i) : 0;
+    const maxPermitidoFila = hasStock ? Math.max(0, stockVal - cantOtrasFilas) : null;
+    
+    // Contar cuántas filas tienen este mismo insumo
+    const numFilasMismoInsumo = insKey 
+      ? solicitudItems.filter(x => getInsumoKey(x.insumoId) === insKey).length 
+      : 0;
+    const esDuplicado = numFilasMismoInsumo > 1;
+    const itemCantNum = parseFloat(item.cantidad) || 0;
+    const isOverStock = hasStock && (totalSolicitadoInsumo > stockVal || itemCantNum > maxPermitidoFila);
 
     let stockMsg = '';
     if (es999a999 && ins) {
@@ -501,6 +617,12 @@ function renderItems() {
     } else if (ins && esAlmacen && stockVal !== null) {
       if (stockVal > 0) {
         stockMsg = `<div style="font-size:11px;font-weight:700;margin-top:3px;color:#16a34a">📦 Stock disponible en Almacén General: ${stockVal} ${ins.unidad || ''}</div>`;
+        if (esDuplicado) {
+          const remanenteTotal = Math.max(0, stockVal - totalSolicitadoInsumo);
+          stockMsg += `<div style="font-size:11px;font-weight:600;margin-top:2px;color:${isOverStock ? '#ef4444' : '#0284c7'}">
+            📊 Suma solicitada en todas las filas: <strong>${totalSolicitadoInsumo}</strong> de ${stockVal} ${ins.unidad || ''} (Restante: ${remanenteTotal} ${ins.unidad || ''})
+          </div>`;
+        }
       } else {
         stockMsg = `<div style="font-size:11px;font-weight:700;margin-top:3px;color:#ef4444">⚠️ Sin stock disponible en Almacén General (0 ${ins.unidad || ''})</div>`;
       }
@@ -533,13 +655,30 @@ function renderItems() {
         ${stockMsg}
       </td>
       <td style="vertical-align:top">
-        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${stockVal}"` : ''} step="any" value="${hasStock && parseFloat(item.cantidad) > stockVal ? (stockVal > 0 ? stockVal : 1) : (item.cantidad || 1)}"
+        <input type="number" id="qty-input-${i}" min="0.01" ${hasStock ? `max="${maxPermitidoFila}"` : ''} step="any"
+               value="${hasStock && itemCantNum > maxPermitidoFila ? maxPermitidoFila : (item.cantidad !== undefined && item.cantidad !== null ? item.cantidad : 1)}"
                oninput="onCantidadItemChange(${i}, this.value)"
                style="border:1px solid ${isOverStock ? '#ef4444' : '#ddd'};border-radius:4px;padding:6px 8px;font-family:Montserrat,sans-serif;font-size:13px;width:100%;font-weight:600">
+        
         <div id="qty-warn-${i}" style="display:${isOverStock ? 'block' : 'none'};color:#ef4444;font-size:10px;font-weight:700;margin-top:2px">
-          ⚠️ Tope máximo: ${stockVal} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.
+          ${esDuplicado
+            ? `⚠️ Tope excedido: La suma total (${totalSolicitadoInsumo} ${ins ? (ins.unidad || '') : ''}) supera el stock disponible (${stockVal} ${ins ? (ins.unidad || '') : ''}).`
+            : `⚠️ Tope máximo: ${stockVal} ${ins ? (ins.unidad || '') : ''}. No se puede exceder el stock disponible en Almacén General.`
+          }
         </div>
-        ${hasStock ? `<div style="font-size:10px;color:#64748b;margin-top:1px">Máx en Almacén: ${stockVal} ${ins ? (ins.unidad || '') : ''}</div>` : ''}
+        
+        <div id="qty-dup-info-${i}" style="display:${esDuplicado ? 'block' : 'none'};font-size:10px;font-weight:600;color:${isOverStock ? '#ef4444' : '#2563eb'};margin-top:2px">
+          ${esDuplicado ? `ℹ️ Insumo en ${numFilasMismoInsumo} filas · Suma: <strong>${totalSolicitadoInsumo}</strong> / ${stockVal} ${ins ? (ins.unidad || '') : ''}` : ''}
+        </div>
+
+        ${hasStock ? `
+          <div id="qty-max-info-${i}" style="font-size:10px;color:#64748b;margin-top:1px">
+            ${esDuplicado 
+              ? `Máx restante para esta fila: <strong>${maxPermitidoFila}</strong> (Total: ${stockVal} ${ins ? (ins.unidad || '') : ''})`
+              : `Máx en Almacén: ${stockVal} ${ins ? (ins.unidad || '') : ''}`
+            }
+          </div>
+        ` : ''}
       </td>
       <td id="ins-unit-${i}" style="color:#64748b;font-size:12px;font-weight:600;vertical-align:middle">${ins ? ins.unidad : '—'}</td>
       <td style="text-align:center;vertical-align:middle">
@@ -688,13 +827,9 @@ function _seleccionarInsumoVisual(insumoId) {
     if (solicitudItems.length > 0 && !solicitudItems[solicitudItems.length - 1].insumoId) {
       _selectInsumo(solicitudItems.length - 1, insumoId);
     } else {
-      solicitudItems.push({ insumoId, cantidad: 1, comentario: '', imagen: '' });
-      const ins = getInsumo(insumoId);
-      if (ins) {
-        if (ins.imagen) solicitudItems[solicitudItems.length - 1].imagen = ins.imagen;
-        if (ins.especificaciones) solicitudItems[solicitudItems.length - 1].comentario = ins.especificaciones;
-      }
-      renderItems();
+      const newIdx = solicitudItems.length;
+      solicitudItems.push({ insumoId: '', cantidad: 1, comentario: '', imagen: '' });
+      _selectInsumo(newIdx, insumoId);
     }
   }
   closeModal();
@@ -725,13 +860,22 @@ async function guardarSolicitud() {
   // ── VALIDACIÓN CRÍTICA: Solo aplica tope de stock si el origen es Almacén General (999) hacia otro destino distinto (no aplica en 999 al 999) ──
   const es999a999 = isAlmacenGeneral(ccOri) && isAlmacenGeneral(ccDes);
   if (isAlmacenGeneral(ccOri) && !es999a999) {
+    // Agrupar por insumo para sumar cantidades de todas las filas del mismo insumo
+    const totalsByInsumo = {};
     for (const item of solicitudItems) {
+      if (!item.insumoId) continue;
       const ins = getInsumo(item.insumoId);
+      const key = getInsumoKey(ins);
+      totalsByInsumo[key] = (totalsByInsumo[key] || 0) + (parseFloat(item.cantidad) || 0);
+    }
+
+    for (const [key, totalCant] of Object.entries(totalsByInsumo)) {
+      const ins = getInsumo(key);
       const stockVal = getStockForInsumo(ins);
       if (stockVal !== null) {
-        const reqVal = parseFloat(item.cantidad);
-        if (reqVal > stockVal) {
-          return alert(`❌ TOPE DE STOCK EXCEDIDO:\n\nEl insumo "${ins.nombre}" (${ins.clave || ins.id}) solo cuenta con un stock disponible de ${stockVal} ${ins.unidad || 'Pieza'} en Almacén General.\n\nNo se permite realizar una salida por ${reqVal} ${ins.unidad || 'Pieza'}.\n\nPor favor ajuste la cantidad para continuar.`);
+        if (totalCant > stockVal) {
+          const exceso = (totalCant - stockVal).toFixed(2).replace(/\.00$/, '');
+          return alert(`❌ TOPE DE STOCK EXCEDIDO:\n\nEl insumo "${ins.nombre}" (${ins.clave || ins.id}) solo cuenta con un stock disponible de ${stockVal} ${ins.unidad || 'Pieza'} en Almacén General.\n\nLa cantidad total solicitada (sumando todas las filas de este insumo) es de ${totalCant} ${ins.unidad || 'Pieza'}, lo cual supera el stock disponible por ${exceso} ${ins.unidad || 'Pieza'}.\n\nPor favor ajuste las cantidades para continuar.`);
         }
       }
     }

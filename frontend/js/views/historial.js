@@ -223,6 +223,7 @@ function renderHistorialTable(list) {
   }
   const user = getUser();
   const canEdit = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista' || user.rol === 'control_obra');
+  const canCancel = user && (user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista' || user.rol === 'control_obra');
 
   return `<table>
     <thead>
@@ -243,10 +244,14 @@ function renderHistorialTable(list) {
         <td class="text-sm">${t.autorizador ? (t.autorizador2 ? `${t.autorizador} / ${t.autorizador2}` : t.autorizador) : '—'}</td>
         <td>${statusBadge(t.status)}</td>
         <td>
-          <div style="display:flex;gap:6px;align-items:center">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" onclick="verDetalle('${t.id}')">Ver</button>
             <button class="btn btn-secondary btn-sm" onclick="imprimirTraspaso('${t.id}')">🖨</button>
             ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="modalEditarTraspaso('${t.id}')" title="Editar Traspaso">✏️ Editar</button>` : ''}
+            ${(canCancel && t.status !== 'recibido' && t.status !== 'rechazado' && t.status !== 'devuelto_total')
+              ? `<button class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:600" onclick="cancelarTraspaso('${t.id}')" title="Cancelar este vale de traspaso">🚫 Cancelar</button>`
+              : ''
+            }
             ${tienePendientesDevolucion(t)
               ? (tieneDevolucionEnProceso(t)
                 ? (() => {
@@ -279,13 +284,18 @@ function modalEditarTraspaso(id) {
   _editItemsTemp = (t.items || []).map(i => ({ ...i }));
 
   const isMandadoEditar = (t.status === 'mandado_editar');
-  const canDevolverAEditar = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador') && !isMandadoEditar;
+  const canRevertir = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador') && t.status === 'autorizado';
+  const canCancel = (user.rol === 'control_obra' || user.rol === 'residente' || user.rol === 'administrador' || user.rol === 'almacenista') && (t.status !== 'recibido' && t.status !== 'rechazado');
 
   const alertHeader = isMandadoEditar ? `
     <div class="alert alert-warning" style="margin-bottom:14px;background:#ffedd5;color:#c2410c;border:1px solid #fdba74;padding:10px 14px;border-radius:6px;font-size:12px">
       <strong>⚠️ Traspaso Devuelto para Edición:</strong> Modifique los datos e insumos necesarios. Al guardar los cambios, el traspaso volverá a enviarse al circuito normal de autorización.
     </div>
-  ` : '';
+  ` : (t.status === 'autorizado' ? `
+    <div class="alert alert-info" style="margin-bottom:14px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;padding:10px 14px;border-radius:6px;font-size:12px">
+      <strong>ℹ️ Vale actualmente AUTORIZADO:</strong> Si modifica los insumos o el solicitante, el sistema le ofrecerá reenviarlo al módulo de Autorizaciones. También puede cancelarlo directamente usando el botón rojo "🚫 Cancelar Vale".
+    </div>
+  ` : '');
 
   const body = `
     ${alertHeader}
@@ -329,8 +339,9 @@ function modalEditarTraspaso(id) {
   `;
 
   const footer = `
-    <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-    ${canDevolverAEditar ? `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="solicitarEdicionTraspaso('${id}')">✏️ Editar</button>` : ''}
+    <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
+    ${canRevertir ? `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="revertirTraspasoAPendiente('${id}')">↩️ Revertir a Autorizaciones</button>` : ''}
+    ${canCancel ? `<button class="btn btn-danger" style="background:#dc2626;border-color:#b91c1c;color:#fff;font-weight:700" onclick="cancelarTraspaso('${id}')">🚫 Cancelar Vale</button>` : ''}
     <button class="btn btn-primary" id="btn-guardar-edit" onclick="guardarEdicionTraspaso('${id}')">💾 ${isMandadoEditar ? 'Guardar y Reenviar a Proceso' : 'Guardar Cambios'}</button>
   `;
 
@@ -489,11 +500,13 @@ async function guardarEdicionTraspaso(id) {
 
   try {
     const wasMandadoEditar = (t.status === 'mandado_editar');
+    const wasAutorizado = (t.status === 'autorizado');
 
     t.solicitante = sol;
     t.observaciones = obs;
     t.items = _editItemsTemp;
 
+    let reenviado = false;
     if (wasMandadoEditar) {
       t.status = 'pendiente_cordinador';
       t.autorizadorCordinador = null;
@@ -508,6 +521,22 @@ async function guardarEdicionTraspaso(id) {
       t.receptor = null;
       t.fechaRecepcion = null;
       t.comentarioRec = null;
+      reenviado = true;
+    } else if (wasAutorizado) {
+      const resp = confirm(`Este traspaso ya estaba AUTORIZADO.\n\n¿Desea restablecerlo a "Pendiente de Autorización" para que las firmas se vuelvan a emitir con los nuevos cambios?\n\n• Aceptar: Se eliminan las firmas y regresa al módulo de Autorizaciones.\n• Cancelar: Se guardan los cambios manteniendo el estado Autorizado.`);
+      if (resp) {
+        t.status = 'pendiente';
+        t.autorizador = null;
+        t.fechaAutorizacion = null;
+        t.comentarioAuth = null;
+        t.autorizador2 = null;
+        t.fechaAutorizacion2 = null;
+        t.comentarioAuth2 = null;
+        t.autorizadorCordinador = null;
+        t.fechaAutorizacionCordinador = null;
+        t.comentarioAuthCordinador = null;
+        reenviado = true;
+      }
     }
 
     await saveState('traspasos', t);
@@ -519,6 +548,10 @@ async function guardarEdicionTraspaso(id) {
     cargarHistorial();
     if (wasMandadoEditar) {
       alert(`El traspaso ${t.folio} fue actualizado y reenviado al proceso de autorización (Pendiente Cordinador).`);
+    } else if (wasAutorizado && reenviado) {
+      alert(`El traspaso ${t.folio} fue actualizado y regresado a Autorizaciones (Pendiente Residente).`);
+    } else {
+      alert(`Los cambios en el traspaso ${t.folio} fueron guardados exitosamente.`);
     }
   } catch (err) {
     console.error(err);
@@ -527,5 +560,100 @@ async function guardarEdicionTraspaso(id) {
       btn.disabled = false;
       btn.innerHTML = '💾 Guardar Cambios';
     }
+  }
+}
+
+async function cancelarTraspaso(id) {
+  const user = getUser();
+  const allowed = ['residente', 'control_obra', 'administrador', 'almacenista'];
+  if (!user || !allowed.includes(user.rol)) {
+    return alert('No tienes permisos para cancelar traspasos.');
+  }
+
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  if (t.status === 'recibido') {
+    return alert(`El traspaso ${t.folio} ya fue RECIBIDO en destino. Para devolver material de un traspaso recibido debe utilizar el proceso de Devolución.`);
+  }
+
+  if (t.status === 'rechazado') {
+    return alert(`El traspaso ${t.folio} ya se encuentra cancelado/rechazado.`);
+  }
+
+  const motivo = prompt(`¿Está seguro de que desea CANCELAR el traspaso ${t.folio}?\n\nIngrese el motivo de la cancelación:`);
+  if (motivo === null) return;
+  if (!motivo.trim()) {
+    return alert('Debe ingresar un motivo para cancelar el traspaso.');
+  }
+
+  try {
+    const notaCancel = `[Cancelado por ${user.nombre || user.usuario || 'Usuario'}]: ${motivo.trim()}`;
+    t.status = 'rechazado';
+    t.observaciones = t.observaciones ? `${t.observaciones}\n${notaCancel}` : notaCancel;
+    t.comentarioAuth = t.comentarioAuth ? `${t.comentarioAuth} | ${notaCancel}` : notaCancel;
+
+    await saveState('traspasos', t);
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
+
+    closeModal();
+    if (typeof cargarHistorial === 'function') cargarHistorial();
+    if (typeof updateBadges === 'function') updateBadges();
+    if (typeof _renderRecepcionContent === 'function') _renderRecepcionContent();
+
+    alert(`✅ El traspaso ${t.folio} ha sido CANCELADO exitosamente.`);
+  } catch (err) {
+    console.error(err);
+    alert('Error al cancelar el traspaso: ' + (err.message || err));
+  }
+}
+
+async function revertirTraspasoAPendiente(id) {
+  const user = getUser();
+  const allowed = ['residente', 'control_obra', 'administrador'];
+  if (!user || !allowed.includes(user.rol)) {
+    return alert('No tienes permisos para revertir autorizaciones.');
+  }
+
+  const t = S.traspasos.find(x => x.id === id);
+  if (!t) return;
+
+  if (t.status === 'recibido') {
+    return alert(`El traspaso ${t.folio} ya fue RECIBIDO. No se puede revertir a autorización.`);
+  }
+
+  const motivo = prompt(`¿Desea revertir las autorizaciones del traspaso ${t.folio} y regresarlo al circuito de Autorizaciones?\n\nIngrese motivo u observaciones (opcional):`);
+  if (motivo === null) return;
+
+  try {
+    const nota = motivo.trim() ? `[Revertido a autorización por ${user.nombre || 'Usuario'}]: ${motivo.trim()}` : `[Revertido a autorización por ${user.nombre || 'Usuario'}]`;
+    t.status = 'pendiente';
+    t.autorizador = null;
+    t.fechaAutorizacion = null;
+    t.comentarioAuth = null;
+    t.autorizador2 = null;
+    t.fechaAutorizacion2 = null;
+    t.comentarioAuth2 = null;
+    t.autorizadorCordinador = null;
+    t.fechaAutorizacionCordinador = null;
+    t.comentarioAuthCordinador = null;
+    t.observaciones = t.observaciones ? `${t.observaciones}\n${nota}` : nota;
+
+    await saveState('traspasos', t);
+    if (typeof fetchState === 'function') {
+      await fetchState();
+    }
+
+    closeModal();
+    if (typeof cargarHistorial === 'function') cargarHistorial();
+    if (typeof updateBadges === 'function') updateBadges();
+    if (typeof _renderRecepcionContent === 'function') _renderRecepcionContent();
+
+    alert(`✅ El traspaso ${t.folio} fue restablecido a "Pendiente de Autorización" y devuelto al módulo de Autorizaciones.`);
+  } catch (err) {
+    console.error(err);
+    alert('Error al revertir el traspaso: ' + (err.message || err));
   }
 }

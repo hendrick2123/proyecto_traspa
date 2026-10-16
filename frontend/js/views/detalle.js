@@ -97,6 +97,19 @@ function verDetalle(id) {
      ${resumenItems(t)}`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
      ${(function() {
+       const u = getUser();
+       const canManage = u && ['residente', 'control_obra', 'administrador', 'almacenista'].includes(u.rol);
+       if (!canManage) return '';
+       let extraBtns = '';
+       if (t.status === 'autorizado' && ['residente', 'control_obra', 'administrador'].includes(u.rol)) {
+         extraBtns += `<button class="btn btn-warning" style="background:#ea580c;border-color:#c2410c;color:#fff;font-weight:700" onclick="closeModal();revertirTraspasoAPendiente('${t.id}')">↩️ Revertir a Pendiente</button>`;
+       }
+       if (t.status !== 'recibido' && t.status !== 'rechazado' && t.status !== 'devuelto_total') {
+         extraBtns += `<button class="btn btn-danger" style="background:#dc2626;border-color:#b91c1c;color:#fff;font-weight:700" onclick="closeModal();cancelarTraspaso('${t.id}')">🚫 Cancelar Vale</button>`;
+       }
+       return extraBtns;
+     })()}
+     ${(function() {
        if ((t.tipo === 'PRS' || (t.tipo === 'GAR' && t.items.some(i => parseFloat(i.cantidad) >= 3))) && (t.status === 'recibido' || t.status === 'devuelto_parcial')) {
          if (typeof tieneDevolucionEnProceso === 'function' && tieneDevolucionEnProceso(t)) {
            const info = typeof getDevolucionEnProcesoInfo === 'function' ? getDevolucionEnProcesoInfo(t) : null;
