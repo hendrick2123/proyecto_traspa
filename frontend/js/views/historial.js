@@ -482,6 +482,7 @@ async function _subirFotoEditTemp(i, input) {
 }
 
 async function guardarEdicionTraspaso(id) {
+  const user = getUser();
   const t = S.traspasos.find(x => x.id === id);
   if (!t) return;
 
