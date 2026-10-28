@@ -11,3 +11,7 @@ services:
       - .env
     environment:
       - PORT=8000
+    volumes:
+      - ./frontend/uploads:/app/frontend/uploads
+      - ./db.json:/app/db.json
+      - ./sessions.json:/app/sessions.json

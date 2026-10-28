@@ -57,7 +57,7 @@ except (Exception, psycopg2.DatabaseError) as error:
 
 @contextmanager
 def get_db_connection_ctx():
-    """Context manager para obtener una conexión del pool y devolverla automáticamente."""
+    """Context manager para obtener una conexión del pool y devolverla automáticamente limpia."""
     conn = None
     try:
         if connection_pool:
@@ -65,21 +65,58 @@ def get_db_connection_ctx():
         else:
             conn = psycopg2.connect(**DB_CONFIG)
         yield conn
+    except Exception:
+        if conn and not getattr(conn, "closed", True):
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
     finally:
         if conn and connection_pool:
+            if not getattr(conn, "closed", True):
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             connection_pool.putconn(conn)
+        elif conn:
+            conn.close()
 
 class PooledConnectionWrapper:
     def __init__(self, conn, pool_obj):
         self._conn = conn
         self._pool = pool_obj
+        self._closed = False
 
     def close(self):
-        if self._pool and self._conn:
+        if not self._closed and self._pool and self._conn:
+            self._closed = True
             try:
+                if not getattr(self._conn, "closed", True):
+                    # Limpiar cualquier transacción pendiente o abortada para no contaminar el pool
+                    self._conn.rollback()
                 self._pool.putconn(self._conn)
             except Exception:
                 pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            try:
+                if not getattr(self._conn, "closed", True):
+                    self._conn.rollback()
+            except Exception:
+                pass
+        else:
+            try:
+                if not getattr(self._conn, "closed", True):
+                    self._conn.commit()
+            except Exception:
+                pass
+        self.close()
 
     def __getattr__(self, item):
         return getattr(self._conn, item)
@@ -88,13 +125,19 @@ def get_db_connection(retries=3):
     """
     Mantiene compatibilidad hacia atrás con scripts existentes.
     Obtiene una conexión del pool envuelta en PooledConnectionWrapper para que conn.close()
-    devuelva la conexión al pool de forma segura.
+    devuelva la conexión al pool de forma segura y limpia.
     """
     last_err = None
     for attempt in range(retries):
         try:
             if connection_pool:
                 raw_conn = connection_pool.getconn()
+                # Asegurar estado limpio antes de entregarla
+                if not getattr(raw_conn, "closed", True):
+                    try:
+                        raw_conn.rollback()
+                    except Exception:
+                        pass
                 return PooledConnectionWrapper(raw_conn, connection_pool)
             else:
                 return psycopg2.connect(**DB_CONFIG)
@@ -108,7 +151,19 @@ def get_db_connection(retries=3):
 
 def release_db_connection(conn):
     """Ayudante para código legacy que necesita devolver la conexión manualmente."""
-    if connection_pool and conn:
-        connection_pool.putconn(conn)
-    elif conn:
+    if not conn:
+        return
+    if isinstance(conn, PooledConnectionWrapper):
         conn.close()
+    elif connection_pool and conn:
+        try:
+            if not getattr(conn, "closed", True):
+                conn.rollback()
+        except Exception:
+            pass
+        connection_pool.putconn(conn)
+    else:
+        try:
+            conn.close()
+        except Exception:
+            pass

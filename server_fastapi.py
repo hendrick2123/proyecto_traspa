@@ -14,7 +14,7 @@ import psycopg2
 from contextlib import asynccontextmanager
 from typing import Optional, Any
 
-from fastapi import FastAPI, Request, HTTPException, Depends, Query
+from fastapi import FastAPI, Request, HTTPException, Depends, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,8 +36,9 @@ PORT = int(os.environ.get("PORT", 8000))
 CORS_ALLOWED_ORIGINS = [
     origin.strip() for origin in os.environ.get(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:8000,http://127.0.0.1:8000,null"
+        "http://localhost:8000,http://127.0.0.1:8000"
     ).split(",")
+    if origin.strip() and origin.strip().lower() != "null"
 ]
 
 GEO_RESTRICTION_ENABLED  = os.environ.get("GEO_RESTRICTION_ENABLED", "true").lower() == "true"
@@ -149,7 +150,12 @@ def get_db_empresas():
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
-        cur.execute("SELECT id_empresa, nombre_empresa FROM testing.prof_empresas GROUP BY id_empresa, nombre_empresa ORDER BY CAST(id_empresa AS INTEGER);")
+        cur.execute("""
+            SELECT id_empresa, nombre_empresa
+            FROM testing.prof_empresas
+            GROUP BY id_empresa, nombre_empresa
+            ORDER BY (CASE WHEN id_empresa ~ '^[0-9]+$' THEN CAST(id_empresa AS INTEGER) ELSE 999999 END), id_empresa;
+        """)
         rows = cur.fetchall(); cur.close()
         lst = [{"id": r[0], "nombre": r[1], "rfc": ""} for r in rows] if rows else EMPRESAS_DEFAULT.copy()
         if not any(e["id"] == "99" for e in lst):
@@ -534,6 +540,7 @@ def get_db_traspasos_paginated(
     else:
         params_paginated = params
 
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -545,7 +552,7 @@ def get_db_traspasos_paginated(
         sol_rows = cur.fetchall()
         
         if not sol_rows:
-            cur.close(); conn.close()
+            cur.close()
             return [], total_count
 
         sol_ids = tuple(r[0] for r in sol_rows)
@@ -556,7 +563,7 @@ def get_db_traspasos_paginated(
             ORDER BY id_detalle;
         """, (sol_ids,))
         det_rows = cur.fetchall()
-        cur.close(); conn.close()
+        cur.close()
 
         items_map = {}
         for d in det_rows:
@@ -589,10 +596,11 @@ def get_db_traspasos_paginated(
         return traspasos, total_count
     except Exception as e:
         print(f"DB Warning get_db_traspasos_paginated: {e}", file=sys.stderr, flush=True)
-        if 'conn' in locals() and conn:
+        return [], 0
+    finally:
+        if conn:
             try: conn.close()
             except: pass
-        return [], 0
 
 def save_db_traspaso(t: dict, conn=None):
     close_conn = False
@@ -602,19 +610,27 @@ def save_db_traspaso(t: dict, conn=None):
             close_conn = True
         cur = conn.cursor()
         is_update = "_dbId" in t
+        prev_status = None
 
         if not is_update:
             folio_str = t.get("folio", "")
             if folio_str:
-                cur.execute('SELECT id_solicitud, solicitante FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
+                cur.execute('SELECT id_solicitud, solicitante, estado FROM testing.solicitudes_traspasos_v2 WHERE folio = %s;', (folio_str,))
                 row = cur.fetchone()
                 if row and row[1] == t.get("solicitante", ""):
                     is_update = True
                     t["_dbId"] = row[0]
+                    prev_status = row[2]
                     print(f"Resend detectado para folio {folio_str}, aplicando como UPDATE", flush=True)
 
         if is_update:
             sol_id = t["_dbId"]
+            if prev_status is None:
+                cur.execute('SELECT estado FROM testing.solicitudes_traspasos_v2 WHERE id_solicitud = %s;', (sol_id,))
+                st_row = cur.fetchone()
+                if st_row:
+                    prev_status = st_row[0]
+
             cur.execute("""
                 UPDATE testing.solicitudes_traspasos_v2
                 SET estado=%s, autorizador=%s, fecha_autorizacion=%s, comentario_auth=%s,
@@ -663,21 +679,38 @@ def save_db_traspaso(t: dict, conn=None):
 
         if "items" in t:
             status_is_recibido = (t.get("status") == "recibido")
+            # Prevenir doble descuento de stock: solo descontar si NO estaba previamente en recibido
+            should_deduct_stock = status_is_recibido and (prev_status != "recibido")
             valores_a_insertar = []
             import psycopg2.extras
+
+            # Optimización N+1: Pre-cargar nombres y unidades en una sola consulta
+            missing_ids = set()
+            for it in t.get("items", []):
+                iid = str(it.get("insumoId", "")).strip()
+                nom = it.get("nombre", "")
+                uni = it.get("unidad", "")
+                if not nom or not uni or nom == iid:
+                    if iid: missing_ids.add(iid)
+            insumos_meta_db = {}
+            if missing_ids:
+                try:
+                    cur.execute("SELECT insumo, descripcion, unidad FROM testing.prof_insumos_v2 WHERE insumo IN %s;", (tuple(missing_ids),))
+                    for r_m in cur.fetchall():
+                        insumos_meta_db[str(r_m[0]).strip()] = (r_m[1], r_m[2])
+                except Exception:
+                    pass
+
             for item in t.get("items", []):
                 insumo_id = str(item.get("insumoId","")).strip()
                 nombre    = item.get("nombre","")
                 unidad    = item.get("unidad","")
                 cant_req  = float(item.get("cantidad", 0) or 0)
                 if not nombre or not unidad or nombre == insumo_id:
-                    try:
-                        cur.execute("SELECT descripcion, unidad FROM testing.prof_insumos_v2 WHERE insumo = %s LIMIT 1;", (insumo_id,))
-                        row = cur.fetchone()
-                        if row:
-                            if not nombre or nombre == insumo_id: nombre = row[0]
-                            if not unidad: unidad = row[1]
-                    except Exception: pass
+                    if insumo_id in insumos_meta_db:
+                        desc_db, uni_db = insumos_meta_db[insumo_id]
+                        if not nombre or nombre == insumo_id: nombre = desc_db
+                        if not unidad: unidad = uni_db
                 if not nombre: nombre = insumo_id
                 if not unidad: unidad = "Pieza"
                 valores_a_insertar.append((
@@ -685,9 +718,10 @@ def save_db_traspaso(t: dict, conn=None):
                     item.get("precio",0.0), item.get("comentario",""), item.get("imagen","")
                 ))
 
-                # If status is recibido, update stock in database/local_db (no aplica a 999 al 999)
+                # Actualizar stock únicamente en la primera recepción (no aplica para retornos/devoluciones/término de obra ni entradas a Almacén 999)
                 is_999_a_999 = (str(t.get("ccOrigen", "")).strip().startswith("999") and str(t.get("ccDestino", "")).strip().startswith("999"))
-                if status_is_recibido and cant_req > 0 and not is_999_a_999:
+                is_retorno = (t.get("tipo") in ("TOB", "DEV")) or str(t.get("ccDestino", "")).strip().startswith("999") or is_999_a_999
+                if should_deduct_stock and cant_req > 0 and not is_retorno:
                     try:
                         if insumo_id.startswith("PV-") or (insumo_id.isdigit() and len(insumo_id) <= 6):
                             numeric_pv_id = int(insumo_id.replace("PV-", ""))
@@ -705,27 +739,7 @@ def save_db_traspaso(t: dict, conn=None):
                                     VALUES (%s, %s, 0, %s, %s, %s, %s, NOW());
                                 """, (numeric_pv_id, cant_ant, cant_req, new_cant, f"Traspaso {t.get('folio', '')}", t.get("solicitante", "Sistema")))
                         else:
-                            # General insumo stock deduction: check prof_insumo_cantidad + local_db
-                            # 1. Check stock in prof_insumo_cantidad table
-                            db_stock_checked = False
-                            try:
-                                cur.execute("""
-                                    SELECT COALESCE(SUM(CAST(cantidad AS NUMERIC)), 0)
-                                    FROM testing.prof_insumo_cantidad
-                                    WHERE insumo = %s;
-                                """, (insumo_id,))
-                                stk_row = cur.fetchone()
-                                if stk_row and float(stk_row[0] or 0) > 0:
-                                    db_stock = float(stk_row[0])
-                                    if cant_req > db_stock:
-                                        raise Exception(f"La cantidad solicitada ({cant_req}) supera el stock disponible ({db_stock}) para el insumo {nombre}")
-                                    db_stock_checked = True
-                            except Exception as db_stk_err:
-                                if "supera el stock" in str(db_stk_err):
-                                    raise db_stk_err
-                                print(f"Warning checking prof_insumo_cantidad: {db_stk_err}", file=sys.stderr, flush=True)
-
-                            # 2. Also check/update local_db meta
+                            # Actualizar metadata local con lock si el insumo está configurado en db.json
                             if os.path.exists(DB_FILE):
                                 with db_file_lock:
                                     with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -752,7 +766,6 @@ def save_db_traspaso(t: dict, conn=None):
                                         with open(DB_FILE, "w", encoding="utf-8") as f:
                                             json.dump(ldb, f, indent=2, ensure_ascii=False)
                             
-                            # 3. Invalidar cache de insumos para reflejar nuevo stock
                             invalidate_catalog_cache("insumos")
                     except Exception as err_stock:
                         print(f"Warning stock check/deduction: {err_stock}", file=sys.stderr, flush=True)
@@ -769,42 +782,49 @@ def save_db_traspaso(t: dict, conn=None):
                 valores_a_insertar
             )
 
-        conn.commit(); cur.close()
-        if close_conn: conn.close()
+        conn.commit()
+        cur.close()
         return sol_id
     except Exception as e:
         print(f"DB Error save_db_traspaso: {e}", file=sys.stderr, flush=True)
         if conn:
             try: conn.rollback()
             except Exception: pass
-            if close_conn:
-                try: conn.close()
-                except Exception: pass
         return None
+    finally:
+        if close_conn and conn:
+            try: conn.close()
+            except Exception: pass
 
 def get_max_folio_number(prefix: str, conn=None):
     close_conn = False
+    conn_obj = conn
     try:
-        if conn is None:
-            conn = get_db_connection()
+        if conn_obj is None:
+            conn_obj = get_db_connection()
             close_conn = True
-        cur = conn.cursor()
+        cur = conn_obj.cursor()
         cur.execute("""
-            SELECT MAX(CAST(SPLIT_PART(folio, '-', 4) AS INTEGER))
+            SELECT COALESCE(MAX(CASE WHEN SPLIT_PART(folio, '-', 4) ~ '^[0-9]+$' THEN CAST(SPLIT_PART(folio, '-', 4) AS INTEGER) ELSE 0 END), 0)
             FROM testing.solicitudes_traspasos_v2
             WHERE folio LIKE %s;
         """, (f"TRP-{prefix}-%",))
-        row = cur.fetchone(); cur.close()
-        if close_conn: conn.close()
+        row = cur.fetchone()
+        cur.close()
         if row and row[0] is not None:
             return int(row[0])
         return 0
     except Exception as e:
         print(f"DB Warning get_max_folio: {e}", file=sys.stderr, flush=True)
         return 0
+    finally:
+        if close_conn and conn_obj:
+            try: conn_obj.close()
+            except Exception: pass
 
 def init_db():
-    """Crea tablas y usuario admin si no existen."""
+    """Crea tablas, usuario admin e índices si no existen."""
+    conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""
@@ -856,8 +876,26 @@ def init_db():
                     REFERENCES testing.solicitudes_traspasos_v2(id_solicitud) ON DELETE CASCADE
             );
         """)
+
+        # Índices esenciales para alto rendimiento y escalabilidad
+        indexes_to_create = [
+            "CREATE INDEX IF NOT EXISTS idx_detalle_id_solicitud ON testing.detalle_traspaso_insumos_v2(id_solicitud);",
+            "CREATE INDEX IF NOT EXISTS idx_detalle_clave_insumo ON testing.detalle_traspaso_insumos_v2(clave_insumo);",
+            "CREATE INDEX IF NOT EXISTS idx_solicitudes_fecha ON testing.solicitudes_traspasos_v2(fecha_solicitud DESC);",
+            "CREATE INDEX IF NOT EXISTS idx_solicitudes_estado ON testing.solicitudes_traspasos_v2(estado);",
+            "CREATE INDEX IF NOT EXISTS idx_solicitudes_tipo ON testing.solicitudes_traspasos_v2(tipo_traspaso);",
+            "CREATE INDEX IF NOT EXISTS idx_solicitudes_cc_origen ON testing.solicitudes_traspasos_v2(cc_origen);",
+            "CREATE INDEX IF NOT EXISTS idx_solicitudes_cc_destino ON testing.solicitudes_traspasos_v2(cc_destino);",
+            "CREATE INDEX IF NOT EXISTS idx_insumos_pv_id ON testing.insumos_postventa(id);",
+        ]
+        for idx_sql in indexes_to_create:
+            try:
+                cur.execute(idx_sql)
+            except Exception as e_idx:
+                print(f"Index notice: {e_idx}", file=sys.stderr, flush=True)
+
         conn.commit(); cur.close()
-        print("DB: Tablas verificadas/creadas correctamente.", flush=True)
+        print("DB: Tablas e índices verificados/creados correctamente.", flush=True)
     except Exception as e:
         print(f"DB Warning init_db: {e}", file=sys.stderr, flush=True)
     finally:
@@ -919,8 +957,14 @@ def get_current_user(request: Request):
         ACTIVE_SESSIONS.pop(token, None)
         save_sessions()
         raise HTTPException(status_code=401, detail="Sesión expirada. Inicie sesión nuevamente.")
+    
+    user = session.get("user", {})
+    if user.get("activo") is False:
+        ACTIVE_SESSIONS.pop(token, None)
+        save_sessions()
+        raise HTTPException(status_code=403, detail="Tu cuenta está desactivada. Contacta al administrador.")
         
-    return session["user"]
+    return user
 
 # ─── Lifespan (startup) ───────────────────────────────────────────────────────
 @asynccontextmanager
@@ -983,10 +1027,15 @@ async def access_restriction_middleware(request: Request, call_next):
                 <p>Solo se permite <strong>Google Chrome</strong> o <strong>Microsoft Edge</strong>.</p></div></body></html>"""
                 return HTMLResponse(content=html, status_code=403)
 
-    # Geo check
+    # Geo check (validar origen confiable antes de aceptar X-Forwarded-For)
     if GEO_RESTRICTION_ENABLED and request.method != "OPTIONS":
-        client_ip = request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.client.host if request.client else "127.0.0.1"))
-        client_ip = client_ip.split(",")[0].strip()
+        direct_host = request.client.host if request.client else "127.0.0.1"
+        if direct_host in ("127.0.0.1", "::1", "localhost"):
+            forwarded = request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP"))
+            client_ip = forwarded.split(",")[0].strip() if forwarded else direct_host
+        else:
+            client_ip = direct_host
+
         ok, geo_info = await check_geo_location_async(client_ip)
         if not ok:
             html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Acceso Restringido</title>
@@ -1024,22 +1073,23 @@ def api_get_empresas(user: dict = Depends(get_current_user)):
     return {"empresas": empresas}
 
 @app.post("/api/empresas")
-async def api_post_empresas(request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_post_empresas(data: dict = Body(...), user: dict = Depends(get_current_user)):
     official_emp = get_db_empresas()
     incoming_emp = data.get("empresas", [])
     filtered_emp = [e for e in incoming_emp if not any(oe["id"] == e["id"] for oe in official_emp)]
     
-    local_db = {}
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                local_db = json.load(f)
-        except Exception: pass
-    
-    local_db["empresas"] = filtered_emp
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(local_db, f, indent=2, ensure_ascii=False)
+    with db_file_lock:
+        local_db = {}
+        if os.path.exists(DB_FILE):
+            try:
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    local_db = json.load(f)
+            except Exception: pass
+        
+        local_db["empresas"] = filtered_emp
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(local_db, f, indent=2, ensure_ascii=False)
+            
     invalidate_catalog_cache("empresas")
     return {"status": "success"}
 
@@ -1058,22 +1108,23 @@ def api_get_centros_costo(user: dict = Depends(get_current_user)):
     return {"centrosCosto": centros_costo}
 
 @app.post("/api/centros_costo")
-async def api_post_centros_costo(request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_post_centros_costo(data: dict = Body(...), user: dict = Depends(get_current_user)):
     official_ccs = get_db_centros_costo()
     incoming_ccs = data.get("centrosCosto", [])
     filtered_ccs = [c for c in incoming_ccs if not any(oc["id"] == c["id"] for oc in official_ccs)]
     
-    local_db = {}
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                local_db = json.load(f)
-        except Exception: pass
-        
-    local_db["centrosCosto"] = filtered_ccs
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(local_db, f, indent=2, ensure_ascii=False)
+    with db_file_lock:
+        local_db = {}
+        if os.path.exists(DB_FILE):
+            try:
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    local_db = json.load(f)
+            except Exception: pass
+            
+        local_db["centrosCosto"] = filtered_ccs
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(local_db, f, indent=2, ensure_ascii=False)
+            
     invalidate_catalog_cache("centros_costo")
     return {"status": "success"}
 
@@ -1124,41 +1175,41 @@ def api_get_insumos(user: dict = Depends(get_current_user)):
     return {"insumos": result}
 
 @app.post("/api/insumos")
-async def api_post_insumos(request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_post_insumos(data: dict = Body(...), user: dict = Depends(get_current_user)):
     official_ins = get_db_insumos()
     incoming_ins = data.get("insumos", [])
     
-    local_db = {}
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                local_db = json.load(f)
-        except Exception:
-            pass
+    with db_file_lock:
+        local_db = {}
+        if os.path.exists(DB_FILE):
+            try:
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    local_db = json.load(f)
+            except Exception:
+                pass
 
-    meta_map = local_db.get("insumos_meta", {})
-    custom_ins = []
-    
-    for item in incoming_ins:
-        ins_id = str(item.get("id") or item.get("clave") or "").strip()
-        is_official = any(str(oi.get("id") or oi.get("clave") or "").strip() == ins_id for oi in official_ins)
-        if is_official:
-            meta_map[ins_id] = {
-                "cantidad": item.get("cantidad"),
-                "imagen": item.get("imagen", ""),
-                "especificaciones": item.get("especificaciones", ""),
-                "nombre": item.get("nombre"),
-                "unidad": item.get("unidad"),
-                "categoria": item.get("categoria")
-            }
-        else:
-            custom_ins.append(item)
+        meta_map = local_db.get("insumos_meta", {})
+        custom_ins = []
+        
+        for item in incoming_ins:
+            ins_id = str(item.get("id") or item.get("clave") or "").strip()
+            is_official = any(str(oi.get("id") or oi.get("clave") or "").strip() == ins_id for oi in official_ins)
+            if is_official:
+                meta_map[ins_id] = {
+                    "cantidad": item.get("cantidad"),
+                    "imagen": item.get("imagen", ""),
+                    "especificaciones": item.get("especificaciones", ""),
+                    "nombre": item.get("nombre"),
+                    "unidad": item.get("unidad"),
+                    "categoria": item.get("categoria")
+                }
+            else:
+                custom_ins.append(item)
 
-    local_db["insumos"] = custom_ins
-    local_db["insumos_meta"] = meta_map
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(local_db, f, indent=2, ensure_ascii=False)
+        local_db["insumos"] = custom_ins
+        local_db["insumos_meta"] = meta_map
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(local_db, f, indent=2, ensure_ascii=False)
     invalidate_catalog_cache("insumos")
     return {"status": "success"}
 
@@ -1194,8 +1245,9 @@ def api_get_insumos_postventa(user: dict = Depends(get_current_user)):
     return {"insumos": insumos}
 
 @app.post("/api/insumos_postventa")
-async def api_post_insumos_postventa(request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_post_insumos_postventa(data: dict = Body(...), user: dict = Depends(get_current_user)):
+    if user.get("rol") not in ["administrador", "postventa"]:
+        raise HTTPException(status_code=403, detail="No autorizado para gestionar insumos de postventa.")
     conn = get_db_connection()
     new_id = None
     if conn:
@@ -1213,18 +1265,17 @@ async def api_post_insumos_postventa(request: Request, user: dict = Depends(get_
         except Exception as e:
             conn.rollback()
             print(f"Error saving insumo_postventa: {e}", file=sys.stderr)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save"})
+            raise HTTPException(status_code=500, detail="Failed to save")
         finally:
             conn.close()
     if new_id:
         return {"status": "success", "id": f"PV-{new_id}", "clave": f"PV-{new_id}"}
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+    raise HTTPException(status_code=500, detail="DB connection failed")
 
 @app.put("/api/insumos_postventa/{id_pv}")
-async def api_put_insumos_postventa(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_put_insumos_postventa(id_pv: str, data: dict = Body(...), user: dict = Depends(get_current_user)):
+    if user.get("rol") not in ["administrador", "postventa"]:
+        raise HTTPException(status_code=403, detail="No autorizado para modificar insumos de postventa.")
     numeric_id = id_pv.replace("PV-", "") if id_pv.startswith("PV-") else id_pv
     conn = get_db_connection()
     if conn:
@@ -1248,138 +1299,134 @@ async def api_put_insumos_postventa(id_pv: str, request: Request, user: dict = D
             return {"status": "success"}
         except Exception as e:
             conn.rollback()
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+            raise HTTPException(status_code=500, detail=str(e))
         finally:
             conn.close()
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+    raise HTTPException(status_code=500, detail="DB connection failed")
 
 @app.put("/api/insumos_postventa/{id_pv}/add_stock")
-async def api_put_insumos_postventa_add_stock(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
+def api_put_insumos_postventa_add_stock(id_pv: str, data: dict = Body(...), user: dict = Depends(get_current_user)):
     if user.get("rol") not in ["administrador", "postventa"]:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+        raise HTTPException(status_code=403, detail="No autorizado")
     
-    data = await request.json()
-    add_cantidad = float(data.get("cantidad", 0))
+    try:
+        add_cantidad = float(data.get("cantidad", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Cantidad inválida")
     orden_compra = data.get("orden_compra", "").strip()
     if add_cantidad <= 0:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=400, content={"status": "error", "message": "La cantidad a agregar debe ser mayor a 0"})
+        raise HTTPException(status_code=400, detail="La cantidad a agregar debe ser mayor a 0")
     if not orden_compra:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=400, content={"status": "error", "message": "La orden de compra es obligatoria"})
+        raise HTTPException(status_code=400, detail="La orden de compra es obligatoria")
 
     try:
         numeric_id = int(id_pv.replace("PV-", ""))
     except ValueError:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=400, content={"status": "error", "message": "ID inválido"})
+        raise HTTPException(status_code=400, detail="ID inválido")
 
     conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            # Obtener cantidad anterior
-            cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
-            row = cur.fetchone()
-            if row is None:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=404, content={"status": "error", "message": "Insumo no encontrado"})
-            cantidad_anterior = float(row[0])
-            cantidad_total = cantidad_anterior + add_cantidad
+    if not conn:
+        raise HTTPException(status_code=500, detail="DB connection failed")
+    try:
+        cur = conn.cursor()
+        # Actualización atómica en Postgres (evita Lost Updates)
+        cur.execute("""
+            UPDATE testing.insumos_postventa 
+            SET cantidad = COALESCE(cantidad, 0) + %s 
+            WHERE id = %s
+            RETURNING (cantidad - %s) AS cantidad_anterior, cantidad AS cantidad_total;
+        """, (add_cantidad, numeric_id, add_cantidad))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Insumo no encontrado")
+        cantidad_anterior = float(row[0])
+        cantidad_total = float(row[1])
 
-            # Actualizar cantidad
-            cur.execute("""
-                UPDATE testing.insumos_postventa 
-                SET cantidad = %s 
-                WHERE id = %s;
-            """, (cantidad_total, numeric_id))
+        # Registrar en historial
+        cur.execute("""
+            INSERT INTO testing.historial_postventa
+                (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+            VALUES (%s, %s, %s, 0, %s, %s, %s);
+        """, (numeric_id, cantidad_anterior, add_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
 
-            # Registrar en historial
-            cur.execute("""
-                INSERT INTO testing.historial_postventa
-                    (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
-                VALUES (%s, %s, %s, 0, %s, %s, %s);
-            """, (numeric_id, cantidad_anterior, add_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
-
-            conn.commit()
-            return {"status": "success", "new_cantidad": cantidad_total}
-        except Exception as e:
-            conn.rollback()
-            print(f"Error updating insumo_postventa stock: {e}", file=sys.stderr)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update stock"})
-        finally:
-            conn.close()
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+        conn.commit()
+        return {"status": "success", "new_cantidad": cantidad_total}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"Error updating insumo_postventa stock: {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail="Failed to update stock")
+    finally:
+        conn.close()
 
 @app.put("/api/insumos_postventa/{id_pv}/remove_stock")
-async def api_put_insumos_postventa_remove_stock(id_pv: str, request: Request, user: dict = Depends(get_current_user)):
+def api_put_insumos_postventa_remove_stock(id_pv: str, data: dict = Body(...), user: dict = Depends(get_current_user)):
     if user.get("rol") not in ["administrador", "postventa"]:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+        raise HTTPException(status_code=403, detail="No autorizado")
     
-    data = await request.json()
-    salida_cantidad = float(data.get("cantidad", 0))
+    try:
+        salida_cantidad = float(data.get("cantidad", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Cantidad inválida")
     orden_compra = data.get("orden_compra", "").strip() or data.get("motivo", "").strip() or "SALIDA"
     if salida_cantidad <= 0:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=400, content={"status": "error", "message": "La cantidad a retirar debe ser mayor a 0"})
+        raise HTTPException(status_code=400, detail="La cantidad a retirar debe ser mayor a 0")
 
     try:
         numeric_id = int(id_pv.replace("PV-", ""))
     except ValueError:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=400, content={"status": "error", "message": "ID inválido"})
+        raise HTTPException(status_code=400, detail="ID inválido")
 
     conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
+    if not conn:
+        raise HTTPException(status_code=500, detail="DB connection failed")
+    try:
+        cur = conn.cursor()
+        # Actualización atómica con validación de saldo suficiente en Postgres (evita Race Condition)
+        cur.execute("""
+            UPDATE testing.insumos_postventa 
+            SET cantidad = cantidad - %s 
+            WHERE id = %s AND COALESCE(cantidad, 0) >= %s
+            RETURNING (cantidad + %s) AS cantidad_anterior, cantidad AS cantidad_total;
+        """, (salida_cantidad, numeric_id, salida_cantidad, salida_cantidad))
+        row = cur.fetchone()
+        if not row:
+            # Comprobar si no existe o saldo insuficiente
             cur.execute("SELECT COALESCE(cantidad, 0) FROM testing.insumos_postventa WHERE id = %s;", (numeric_id,))
-            row = cur.fetchone()
-            if row is None:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=404, content={"status": "error", "message": "Insumo no encontrado"})
-            cantidad_anterior = float(row[0])
-            if salida_cantidad > cantidad_anterior:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=400, content={"status": "error", "message": f"La cantidad a retirar ({salida_cantidad}) supera el stock actual ({cantidad_anterior})"})
+            exists_row = cur.fetchone()
+            if not exists_row:
+                raise HTTPException(status_code=404, detail="Insumo no encontrado")
+            else:
+                curr_stock = float(exists_row[0])
+                raise HTTPException(status_code=400, detail=f"La cantidad a retirar ({salida_cantidad}) supera el stock actual ({curr_stock})")
 
-            cantidad_total = cantidad_anterior - salida_cantidad
+        cantidad_anterior = float(row[0])
+        cantidad_total = float(row[1])
 
-            cur.execute("""
-                UPDATE testing.insumos_postventa 
-                SET cantidad = %s 
-                WHERE id = %s;
-            """, (cantidad_total, numeric_id))
+        cur.execute("""
+            INSERT INTO testing.historial_postventa
+                (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
+            VALUES (%s, %s, 0, %s, %s, %s, %s);
+        """, (numeric_id, cantidad_anterior, salida_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
 
-            cur.execute("""
-                INSERT INTO testing.historial_postventa
-                    (id_insumo_pv, cantidad_anterior, cantidad_agregada, salida, cantidad_total, orden_compra, usuario)
-                VALUES (%s, %s, 0, %s, %s, %s, %s);
-            """, (numeric_id, cantidad_anterior, salida_cantidad, cantidad_total, orden_compra, user.get("nombre", user.get("username", ""))))
-
-            conn.commit()
-            return {"status": "success", "new_cantidad": cantidad_total}
-        except Exception as e:
-            conn.rollback()
-            print(f"Error updating insumo_postventa stock salida: {e}", file=sys.stderr)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update stock"})
-        finally:
-            conn.close()
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+        conn.commit()
+        return {"status": "success", "new_cantidad": cantidad_total}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"Error updating insumo_postventa stock salida: {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail="Failed to update stock")
+    finally:
+        conn.close()
 
 @app.get("/api/historial_postventa")
-async def api_get_historial_postventa(user: dict = Depends(get_current_user)):
+def api_get_historial_postventa(user: dict = Depends(get_current_user)):
     if user.get("rol") not in ["administrador", "postventa"]:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=403, content={"status": "error", "message": "No autorizado"})
+        raise HTTPException(status_code=403, detail="No autorizado")
     
     conn = get_db_connection()
     if conn:
@@ -1436,12 +1483,10 @@ async def api_get_historial_postventa(user: dict = Depends(get_current_user)):
             return {"status": "success", "data": rows}
         except Exception as e:
             print(f"Error fetching historial_postventa: {e}", file=sys.stderr)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+            raise HTTPException(status_code=500, detail=str(e))
         finally:
             conn.close()
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"status": "error", "message": "DB connection failed"})
+    raise HTTPException(status_code=500, detail="DB connection failed")
 
 @app.post("/api/admin/cache/clear")
 def api_clear_cache(user: dict = Depends(get_current_user)):
@@ -1540,9 +1585,20 @@ def api_get_traspasos_stats(user: dict = Depends(get_current_user)):
             except: pass
 
 @app.post("/api/traspasos")
-async def api_post_traspasos(request: Request, user: dict = Depends(get_current_user)):
-    data = await request.json()
+def api_post_traspasos(data: dict = Body(...), user: dict = Depends(get_current_user)):
     incoming_traspasos = data.get("traspasos", [])
+    user_rol = user.get("rol", "")
+    
+    # Validar autorizaciones de cambio de estado a nivel servidor
+    for t in incoming_traspasos:
+        target_status = t.get("status")
+        if target_status in ("autorizado", "rechazado"):
+            if user_rol not in ("administrador", "control_obra", "residente", "cordinador", "coordinador"):
+                raise HTTPException(status_code=403, detail=f"No tienes permisos para cambiar el estado a '{target_status}'.")
+        if target_status == "recibido":
+            if user_rol not in ("administrador", "control_obra", "residente", "cordinador", "coordinador", "almacenista", "postventa"):
+                raise HTTPException(status_code=403, detail="No tienes permisos para marcar traspasos como recibidos.")
+
     saved_count = 0
     pg_conn = None
     try:
@@ -1553,6 +1609,8 @@ async def api_post_traspasos(request: Request, user: dict = Depends(get_current_
                 if result is None:
                     raise Exception(f"Error al guardar traspaso con folio {t.get('folio')}")
                 saved_count += 1
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"DB Error sync traspasos: {e}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1644,13 +1702,24 @@ def api_get_state(user: dict = Depends(get_current_user)):
     return {"empresas": empresas, "centrosCosto": centros_costo, "insumos": insumos, "desarrollos": desarrollos, "traspasos": traspasos, "folios": folios}
 
 @app.post("/api/state")
-async def api_post_state(request: Request, user: dict = Depends(get_current_user)):
-    state_data     = await request.json()
+def api_post_state(state_data: dict = Body(...), user: dict = Depends(get_current_user)):
     official_emp   = get_db_empresas()
     official_ccs   = get_db_centros_costo()
     official_ins   = get_db_insumos()
 
     incoming_traspasos = state_data.get("traspasos", [])
+    user_rol = user.get("rol", "")
+
+    # Validar autorizaciones de cambio de estado a nivel servidor
+    for t in incoming_traspasos:
+        target_status = t.get("status")
+        if target_status in ("autorizado", "rechazado"):
+            if user_rol not in ("administrador", "control_obra", "residente", "cordinador", "coordinador"):
+                raise HTTPException(status_code=403, detail=f"No tienes permisos para cambiar el estado a '{target_status}'.")
+        if target_status == "recibido":
+            if user_rol not in ("administrador", "control_obra", "residente", "cordinador", "coordinador", "almacenista", "postventa"):
+                raise HTTPException(status_code=403, detail="No tienes permisos para marcar traspasos como recibidos.")
+
     saved_count = 0
     pg_conn = None
     try:
@@ -1660,8 +1729,11 @@ async def api_post_state(request: Request, user: dict = Depends(get_current_user
                 result = save_db_traspaso(t, conn=pg_conn)
                 if result is not None:
                     saved_count += 1
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"DB Error sync traspasos: {e}", file=sys.stderr, flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if pg_conn:
             try: pg_conn.close()
@@ -1669,13 +1741,14 @@ async def api_post_state(request: Request, user: dict = Depends(get_current_user
 
     print(f"Server: {saved_count}/{len(incoming_traspasos)} traspasos sincronizados a Postgres.", flush=True)
 
-    local_db = {
-        "empresas":    [e for e in state_data.get("empresas",[]) if not any(oe["id"]==e["id"] for oe in official_emp)],
-        "centrosCosto":[c for c in state_data.get("centrosCosto",[]) if not any(oc["id"]==c["id"] for oc in official_ccs)],
-        "insumos":     [i for i in state_data.get("insumos",[]) if not any(oi["id"]==i["id"] for oi in official_ins)],
-    }
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(local_db, f, indent=2, ensure_ascii=False)
+    with db_file_lock:
+        local_db = {
+            "empresas":    [e for e in state_data.get("empresas",[]) if not any(oe["id"]==e["id"] for oe in official_emp)],
+            "centrosCosto":[c for c in state_data.get("centrosCosto",[]) if not any(oc["id"]==c["id"] for oc in official_ccs)],
+            "insumos":     [i for i in state_data.get("insumos",[]) if not any(oi["id"]==i["id"] for oi in official_ins)],
+        }
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(local_db, f, indent=2, ensure_ascii=False)
     print("Server: Estado guardado en db.json + Postgres.", flush=True)
     return {"status": "success"}
 
@@ -1704,8 +1777,7 @@ MAX_LOGIN_ATTEMPTS = 3
 LOCKOUT_DURATION_SECONDS = 300  # 5 minutos
 
 @app.post("/api/auth/login")
-async def api_login(request: Request):
-    body     = await request.json()
+def api_login(body: dict = Body(...)):
     username = body.get("username","").strip()
     password = body.get("password","")
     if not username or not password:
@@ -1802,7 +1874,7 @@ async def api_login(request: Request):
         if username_key in LOGIN_ATTEMPTS:
             del LOGIN_ATTEMPTS[username_key]
 
-        user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "empresa_id": row[6], "cc_ids": row[7]}
+        user  = {"id": row[0], "nombre": row[1], "correo": row[2], "username": row[3], "rol": row[4], "activo": row[5], "empresa_id": row[6], "cc_ids": row[7]}
         token = hashlib.sha256(os.urandom(16)).hexdigest()
         # Expira en 8 horas (28800 segundos)
         ACTIVE_SESSIONS[token] = {
@@ -1825,12 +1897,11 @@ async def api_login(request: Request):
             except: pass
 
 @app.post("/api/auth/register", status_code=201)
-async def api_register(request: Request, user: dict = Depends(get_current_user)):
+def api_register(body: dict = Body(...), user: dict = Depends(get_current_user)):
     # Solo administradores pueden registrar nuevos usuarios
     if user.get("rol") != "administrador":
         raise HTTPException(status_code=403, detail="Solo los administradores pueden registrar nuevos usuarios.")
     
-    body       = await request.json()
     nombre     = body.get("nombre","").strip()
     username   = body.get("username","").strip()
     correo     = body.get("correo","").strip()
@@ -1870,8 +1941,11 @@ async def api_register(request: Request, user: dict = Depends(get_current_user))
             except: pass
 
 @app.put("/api/users/{user_id}")
-async def api_update_user(user_id: int, request: Request, user: dict = Depends(get_current_user)):
-    body    = await request.json()
+def api_update_user(user_id: int, body: dict = Body(...), user: dict = Depends(get_current_user)):
+    # Validación de seguridad: Solo administradores pueden gestionar usuarios
+    if user.get("rol") != "administrador":
+        raise HTTPException(status_code=403, detail="Solo los administradores pueden modificar usuarios.")
+
     updates = []; params = []
     if "nombre" in body:
         nombre = body["nombre"].strip()
@@ -1892,6 +1966,15 @@ async def api_update_user(user_id: int, request: Request, user: dict = Depends(g
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute(f"UPDATE testing.prof_usuarios SET {', '.join(updates)} WHERE id = %s;", params)
         conn.commit(); cur.close()
+
+        # Si se desactiva el usuario o se cambian sus credenciales/rol, revocar sus sesiones activas de inmediato
+        if "activo" in body or "password" in body or "rol" in body:
+            to_revoke = [tok for tok, sess in ACTIVE_SESSIONS.items() if sess.get("user", {}).get("id") == user_id]
+            for tok in to_revoke:
+                ACTIVE_SESSIONS.pop(tok, None)
+            if to_revoke:
+                save_sessions()
+
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1901,12 +1984,26 @@ async def api_update_user(user_id: int, request: Request, user: dict = Depends(g
             except: pass
 
 @app.delete("/api/users/{user_id}")
-async def api_delete_user(user_id: int, user: dict = Depends(get_current_user)):
+def api_delete_user(user_id: int, user: dict = Depends(get_current_user)):
+    # Validación de seguridad: Solo administradores pueden eliminar usuarios
+    if user.get("rol") != "administrador":
+        raise HTTPException(status_code=403, detail="Solo los administradores pueden eliminar usuarios.")
+    if user.get("id") == user_id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta de administrador.")
+    
     conn = None
     try:
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("DELETE FROM testing.prof_usuarios WHERE id = %s;", (user_id,))
         conn.commit(); cur.close()
+
+        # Revocar sesiones del usuario eliminado
+        to_revoke = [tok for tok, sess in ACTIVE_SESSIONS.items() if sess.get("user", {}).get("id") == user_id]
+        for tok in to_revoke:
+            ACTIVE_SESSIONS.pop(tok, None)
+        if to_revoke:
+            save_sessions()
+
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1916,20 +2013,38 @@ async def api_delete_user(user_id: int, user: dict = Depends(get_current_user)):
             except: pass
 
 @app.post("/api/upload")
-async def api_upload(request: Request, user: dict = Depends(get_current_user)):
-    body     = await request.json()
+def api_upload(body: dict = Body(...), user: dict = Depends(get_current_user)):
     b64_data = body.get("image","")
     if not b64_data or "," not in b64_data:
         raise HTTPException(status_code=400, detail="Imagen no válida.")
+
+    # Validar tamaño máximo para prevenir saturación de disco / memoria (~10MB)
+    if len(b64_data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="El archivo excede el tamaño máximo permitido (10 MB).")
+
     header, encoded = b64_data.split(",", 1)
+    header_lower = header.lower()
+    
     file_ext = "jpg"
-    if "png" in header: file_ext = "png"
-    elif "webp" in header: file_ext = "webp"
+    if "png" in header_lower:
+        file_ext = "png"
+    elif "webp" in header_lower:
+        file_ext = "webp"
+    elif "jpeg" in header_lower or "jpg" in header_lower:
+        file_ext = "jpg"
+    else:
+        raise HTTPException(status_code=400, detail="Solo se permiten formatos JPG, PNG o WEBP.")
+
+    try:
+        img_bytes = base64.b64decode(encoded)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Codificación base64 inválida.")
+
     file_name  = f"img_{int(time.time())}_{uuid.uuid4().hex[:6]}.{file_ext}"
     upload_dir = os.path.join(FRONTEND_DIR, "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     with open(os.path.join(upload_dir, file_name), "wb") as fh:
-        fh.write(base64.b64decode(encoded))
+        fh.write(img_bytes)
     return {"url": f"/uploads/{file_name}"}
 
 # ─── Static Files (sirve el frontend) ────────────────────────────────────────

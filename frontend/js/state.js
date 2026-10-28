@@ -141,8 +141,17 @@ function saveState(resource, singleItem = null) {
       method: 'POST',
       headers,
       body: JSON.stringify({ traspasos: listToSend })
-    }).then(res => {
-      if (!res.ok) throw new Error('Error al guardar traspasos.');
+    }).then(async res => {
+      if (!res.ok) {
+        let errMsg = 'Error al guardar traspasos.';
+        try {
+          const errData = await res.json();
+          if (errData && (errData.detail || errData.error || errData.message)) {
+            errMsg = errData.detail || errData.error || errData.message;
+          }
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       return res.json();
     });
   } else {
@@ -151,8 +160,17 @@ function saveState(resource, singleItem = null) {
       headers,
       body: JSON.stringify(S)
     })
-    .then(res => {
-      if (!res.ok) throw new Error('Error al guardar el estado en el servidor.');
+    .then(async res => {
+      if (!res.ok) {
+        let errMsg = 'Error al guardar el estado en el servidor.';
+        try {
+          const errData = await res.json();
+          if (errData && (errData.detail || errData.error || errData.message)) {
+            errMsg = errData.detail || errData.error || errData.message;
+          }
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       return res.json();
     })
     .catch(err => {
