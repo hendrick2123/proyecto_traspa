@@ -328,7 +328,7 @@ function guardarDevolucion() {
     id:                'T' + Date.now(),
     folio,
     tipo:              'DEV',
-    status:            'pendiente',
+    status:            'pre_autorizado',
     solicitante:       sol,
     empresaOrigen:     empOri,
     ccOrigen:          devOri,

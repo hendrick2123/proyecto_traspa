@@ -114,7 +114,7 @@ function doRevertir(id) {
   const originalFecha2 = t.fechaAutorizacion2;
   const originalComm2  = t.comentarioAuth2;
 
-  t.status             = 'pendiente';
+  t.status             = 'pre_autorizado';
   t.autorizador        = null;
   t.fechaAutorizacion  = null;
   t.comentarioAuth     = null;

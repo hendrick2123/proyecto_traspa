@@ -63,9 +63,7 @@ function renderHistorial() {
         </select>
         <select id="fil-status" class="btn btn-secondary" style="height:32px" onchange="filtrarHistorial()">
           <option value="">Todos los estados</option>
-          <option value="pendiente_cordinador">Pend. Cordinador</option>
-          <option value="pendiente">Pend. Residente</option>
-          <option value="pre_autorizado">Pre-Autorizado</option>
+          <option value="pre_autorizado">Pend. Autorización</option>
           <option value="mandado_editar">Mandado a Editar</option>
           <option value="autorizado">Autorizado</option>
           <option value="recibido">Recibido</option>
@@ -509,7 +507,7 @@ async function guardarEdicionTraspaso(id) {
 
     let reenviado = false;
     if (wasMandadoEditar) {
-      t.status = 'pendiente_cordinador';
+      t.status = 'pre_autorizado';
       t.autorizadorCordinador = null;
       t.fechaAutorizacionCordinador = null;
       t.comentarioAuthCordinador = null;
@@ -526,7 +524,7 @@ async function guardarEdicionTraspaso(id) {
     } else if (wasAutorizado && user && (user.rol === 'control_obra' || user.rol === 'administrador')) {
       const resp = confirm(`Este traspaso ya estaba AUTORIZADO.\n\n¿Desea restablecerlo a "Pendiente de Autorización" para que las firmas se vuelvan a emitir con los nuevos cambios?\n\n• Aceptar: Se eliminan las firmas y regresa al módulo de Autorizaciones.\n• Cancelar: Se guardan los cambios manteniendo el estado Autorizado.`);
       if (resp) {
-        t.status = 'pendiente';
+        t.status = 'pre_autorizado';
         t.autorizador = null;
         t.fechaAutorizacion = null;
         t.comentarioAuth = null;
@@ -548,9 +546,9 @@ async function guardarEdicionTraspaso(id) {
     closeModal();
     cargarHistorial();
     if (wasMandadoEditar) {
-      alert(`El traspaso ${t.folio} fue actualizado y reenviado al proceso de autorización (Pendiente Cordinador).`);
+      alert(`El traspaso ${t.folio} fue actualizado y reenviado al proceso de autorización (Pendiente de Autorización).`);
     } else if (wasAutorizado && reenviado) {
-      alert(`El traspaso ${t.folio} fue actualizado y regresado a Autorizaciones (Pendiente Residente).`);
+      alert(`El traspaso ${t.folio} fue actualizado y regresado a Autorizaciones (Pendiente de Autorización).`);
     } else {
       alert(`Los cambios en el traspaso ${t.folio} fueron guardados exitosamente.`);
     }
@@ -630,7 +628,7 @@ async function revertirTraspasoAPendiente(id) {
 
   try {
     const nota = motivo.trim() ? `[Revertido a autorización por ${user.nombre || 'Usuario'}]: ${motivo.trim()}` : `[Revertido a autorización por ${user.nombre || 'Usuario'}]`;
-    t.status = 'pendiente';
+    t.status = 'pre_autorizado';
     t.autorizador = null;
     t.fechaAutorizacion = null;
     t.comentarioAuth = null;

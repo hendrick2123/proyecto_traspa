@@ -33,8 +33,16 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
   const tipoLabel = t.tipo === 'PRS' ? 'Por Préstamo' : (t.tipo === 'GAR' ? 'Por Garantía' : 'Por Término de Obra');
 
   const statusWatermark = (t.status === 'pre_autorizado' || t.status === 'autorizado' || t.status === 'recibido')
-    ? `<div class="watermark ${t.status === 'recibido' ? 'recibido' : (t.status === 'pre_autorizado' ? 'pre_autorizado' : 'autorizado')}">${t.status === 'recibido' ? 'RECIBIDO' : (t.status === 'pre_autorizado' ? 'PRE-AUTORIZADO' : 'AUTORIZADO')}</div>`
+    ? `<div class="watermark ${t.status === 'recibido' ? 'recibido' : (t.status === 'pre_autorizado' ? 'pre_autorizado' : 'autorizado')}">${t.status === 'recibido' ? 'RECIBIDO' : (t.status === 'pre_autorizado' ? 'PENDIENTE AUTORIZACIÓN' : 'AUTORIZADO')}</div>`
     : '';
+
+  const esHistoricoMultifirma = Boolean(
+    t.autorizadorCordinador || 
+    (t.autorizador && t.autorizador2 && t.autorizador !== t.autorizador2)
+  );
+  const autorizadorNombre = t.autorizador2 || t.autorizador || '';
+  const autorizadorFecha  = t.fechaAutorizacion2 || t.fechaAutorizacion || null;
+  const autorizadorComm   = t.comentarioAuth2 || t.comentarioAuth || '';
 
   const hasExtra = t.items.some(i => i.comentario || (getInsumo(i.insumoId) && getInsumo(i.insumoId).especificaciones));
   const hasPhotos = t.items.some(i => i.imagen || (getInsumo(i.insumoId) && getInsumo(i.insumoId).imagen));
@@ -84,6 +92,7 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     th{background:#f5f5f5;padding:7px 10px;text-align:left;font-weight:700;border:1px solid #ddd;font-size:10px;text-transform:uppercase}
     td{padding:6px 10px;border:1px solid #ddd}
     .signs{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:50px}
+    .signs.signs-3{grid-template-columns:repeat(3,1fr);gap:32px;max-width:85%;margin:50px auto 0 auto}
     .sign-box{text-align:center}
     .sign-line{border-top:1px solid #111;padding-top:6px;margin-bottom:4px}
     .sign-lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#666}
@@ -168,7 +177,7 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     </div>
   </div>` : ''}
 
-  ${!hideAuthAndObs && t.autorizador ? `
+  ${!hideAuthAndObs && esHistoricoMultifirma && t.autorizador ? `
   <div class="section">
     <h4>Información de Autorización (Residente)</h4>
     <div class="grid2">
@@ -178,13 +187,13 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     </div>
   </div>` : ''}
 
-  ${!hideAuthAndObs && t.autorizador2 ? `
+  ${!hideAuthAndObs && autorizadorNombre ? `
   <div class="section">
     <h4>Información de Autorización (Control de Obra)</h4>
     <div class="grid2">
-      <div class="field"><span class="lbl">Control de Obra Autorizador</span><span class="val">${t.autorizador2}</span></div>
-      <div class="field"><span class="lbl">Fecha de Autorización</span><span class="val">${fmtDate(t.fechaAutorizacion2)}</span></div>
-      ${t.comentarioAuth2 ? `<div class="field" style="grid-column:1/-1"><span class="lbl">Comentarios</span><span class="val">${t.comentarioAuth2}</span></div>` : ''}
+      <div class="field"><span class="lbl">Control de Obra Autorizador</span><span class="val">${autorizadorNombre}</span></div>
+      <div class="field"><span class="lbl">Fecha de Autorización</span><span class="val">${fmtDate(autorizadorFecha)}</span></div>
+      ${autorizadorComm ? `<div class="field" style="grid-column:1/-1"><span class="lbl">Comentarios</span><span class="val">${autorizadorComm}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -198,13 +207,19 @@ function imprimirTraspaso(id, hideAuthAndObs = false) {
     </div>
   </div>` : ''}
 
+  ${esHistoricoMultifirma ? `
   <div class="signs">
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Solicitante</div><div class="sign-name">${t.solicitante}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Cordinador</div><div class="sign-name">${t.autorizadorCordinador || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Residente</div><div class="sign-name">${t.autorizador || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Control de Obra</div><div class="sign-name">${t.autorizador2 || 'Pendiente'}</div></div>
     <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Receptor</div><div class="sign-name">${t.receptor || 'Pendiente de Recibir'}</div></div>
-  </div>
+  </div>` : `
+  <div class="signs signs-3">
+    <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Solicitante</div><div class="sign-name">${t.solicitante}</div></div>
+    <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Control de Obra (Autorizó)</div><div class="sign-name">${autorizadorNombre || 'Pendiente'}</div></div>
+    <div class="sign-box"><div style="height:40px"></div><div class="sign-line"></div><div class="sign-lbl">Receptor</div><div class="sign-name">${t.receptor || 'Pendiente de Recibir'}</div></div>
+  </div>`}
 
   <div class="footer-doc">Grupo Urbania · grupourbania.com.mx · La llave de tu hogar® · Folio: ${t.folio} · Generado: ${new Date().toLocaleString('es-MX')}</div>
   <script>window.onload = function(){ window.print(); }<\/script>

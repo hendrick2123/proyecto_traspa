@@ -17,3 +17,6 @@ sessions.json
 
 # Uploads
 uploads/
+
+# Scratch scripts de desarrollo
+scratch/

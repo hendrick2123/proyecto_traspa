@@ -83,20 +83,70 @@ def get_db_connection_ctx():
         elif conn:
             conn.close()
 
+# Sandbox / Environment prefix configuration
+TABLE_PREFIX = os.environ.get("TABLE_PREFIX", "").strip()
+
+if TABLE_PREFIX:
+    import re
+    _pattern_sol_str = re.compile(rf'(testing\.)?(?<!{re.escape(TABLE_PREFIX)})solicitudes_traspasos_v2')
+    _pattern_det_str = re.compile(rf'(testing\.)?(?<!{re.escape(TABLE_PREFIX)})detalle_traspaso_insumos_v2')
+    _pattern_sol_bytes = re.compile(rf'(testing\.)?(?<!{re.escape(TABLE_PREFIX)})solicitudes_traspasos_v2'.encode())
+    _pattern_det_bytes = re.compile(rf'(testing\.)?(?<!{re.escape(TABLE_PREFIX)})detalle_traspaso_insumos_v2'.encode())
+
+    def rewrite_query_for_sandbox(query):
+        if isinstance(query, bytes):
+            q = _pattern_sol_bytes.sub(rf'\g<1>{TABLE_PREFIX}solicitudes_traspasos_v2'.encode(), query)
+            return _pattern_det_bytes.sub(rf'\g<1>{TABLE_PREFIX}detalle_traspaso_insumos_v2'.encode(), q)
+        elif isinstance(query, str):
+            q = _pattern_sol_str.sub(rf'\g<1>{TABLE_PREFIX}solicitudes_traspasos_v2', query)
+            return _pattern_det_str.sub(rf'\g<1>{TABLE_PREFIX}detalle_traspaso_insumos_v2', q)
+        return query
+
+    class SandboxCursorWrapper:
+        def __init__(self, cursor):
+            self._cursor = cursor
+
+        def execute(self, query, vars=None):
+            return self._cursor.execute(rewrite_query_for_sandbox(query), vars)
+
+        def executemany(self, query, vars_list):
+            return self._cursor.executemany(rewrite_query_for_sandbox(query), vars_list)
+
+        def __getattr__(self, item):
+            return getattr(self._cursor, item)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return self._cursor.__exit__(exc_type, exc_val, exc_tb)
+
+        def __iter__(self):
+            return iter(self._cursor)
+
 class PooledConnectionWrapper:
     def __init__(self, conn, pool_obj):
         self._conn = conn
         self._pool = pool_obj
         self._closed = False
 
+    def cursor(self, *args, **kwargs):
+        cur = self._conn.cursor(*args, **kwargs)
+        if TABLE_PREFIX:
+            return SandboxCursorWrapper(cur)
+        return cur
+
     def close(self):
-        if not self._closed and self._pool and self._conn:
+        if not self._closed and self._conn:
             self._closed = True
             try:
                 if not getattr(self._conn, "closed", True):
                     # Limpiar cualquier transacción pendiente o abortada para no contaminar el pool
                     self._conn.rollback()
-                self._pool.putconn(self._conn)
+                if self._pool:
+                    self._pool.putconn(self._conn)
+                else:
+                    self._conn.close()
             except Exception:
                 pass
 
@@ -140,7 +190,7 @@ def get_db_connection(retries=3):
                         pass
                 return PooledConnectionWrapper(raw_conn, connection_pool)
             else:
-                return psycopg2.connect(**DB_CONFIG)
+                return PooledConnectionWrapper(psycopg2.connect(**DB_CONFIG), None)
         except Exception as e:
             last_err = e
             print(f"[DB WARN] Intento {attempt + 1}/{retries} falló: {e}", file=sys.stderr, flush=True)

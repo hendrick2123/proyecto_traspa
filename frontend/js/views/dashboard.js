@@ -7,20 +7,7 @@ function renderDashboard() {
   const total      = traspaFiltrados.length;
   
   const user = getUser();
-  let pend = 0;
-  if (user) {
-    if (user.rol === 'cordinador') {
-      pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador').length;
-    } else if (user.rol === 'residente') {
-      pend = traspaFiltrados.filter(t => t.status === 'pendiente').length;
-    } else if (user.rol === 'control_obra') {
-      pend = traspaFiltrados.filter(t => t.status === 'pre_autorizado').length;
-    } else {
-      pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
-    }
-  } else {
-    pend = traspaFiltrados.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
-  }
+  const pend = traspaFiltrados.filter(t => t.status === 'pre_autorizado' || t.status === 'pendiente' || t.status === 'pendiente_cordinador').length;
 
   const auth       = traspaFiltrados.filter(t => t.status === 'autorizado').length;
   const recibidos  = traspaFiltrados.filter(t => t.status === 'recibido').length;

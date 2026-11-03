@@ -485,8 +485,11 @@ def get_db_traspasos_paginated(
         where_clauses.append("s.solicitante NOT IN (SELECT nombre FROM testing.prof_usuarios WHERE rol = 'postventa')")
 
     if status:
-        where_clauses.append("s.estado = %s")
-        params.append(status)
+        if status == "pre_autorizado":
+            where_clauses.append("s.estado IN ('pre_autorizado', 'pendiente', 'pendiente_cordinador')")
+        else:
+            where_clauses.append("s.estado = %s")
+            params.append(status)
     if tipo:
         where_clauses.append("s.tipo_traspaso = %s")
         params.append(tipo)
@@ -1619,6 +1622,17 @@ def api_post_traspasos(data: dict = Body(...), user: dict = Depends(get_current_
             try: pg_conn.close()
             except Exception: pass
     return {"status": "success", "saved_count": saved_count}
+
+@app.get("/api/environment")
+def api_get_environment():
+    prefix = os.environ.get("TABLE_PREFIX", "").strip()
+    return {
+        "is_dev": bool(prefix),
+        "mode": "development" if bool(prefix) else "production",
+        "table_prefix": prefix,
+        "table_solicitudes": f"testing.{prefix}solicitudes_traspasos_v2" if prefix else "testing.solicitudes_traspasos_v2",
+        "table_detalle": f"testing.{prefix}detalle_traspaso_insumos_v2" if prefix else "testing.detalle_traspaso_insumos_v2"
+    }
 
 # ─── Folios REST Endpoints ───
 @app.get("/api/folios")

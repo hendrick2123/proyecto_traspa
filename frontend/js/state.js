@@ -330,7 +330,7 @@ function tipoBadge(tipo) {
 }
 
 function statusBadge(s) {
-  const map    = { pendiente_cordinador:'badge-pending', pendiente:'badge-pending', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft', devuelto_parcial:'badge-partial', devuelto_total:'badge-returned', mandado_editar:'badge-edit-needed' };
-  const labels = { pendiente_cordinador:'Pend. Cordinador', pendiente:'Pend. Residente', pre_autorizado:'Pend. Control', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total', mandado_editar:'Mandado a Editar' };
+  const map    = { pendiente_cordinador:'badge-preauthorized', pendiente:'badge-preauthorized', pre_autorizado:'badge-preauthorized', autorizado:'badge-authorized', recibido:'badge-received', rechazado:'badge-rejected', borrador:'badge-draft', devuelto_parcial:'badge-partial', devuelto_total:'badge-returned', mandado_editar:'badge-edit-needed' };
+  const labels = { pendiente_cordinador:'Pend. Autorización', pendiente:'Pend. Autorización', pre_autorizado:'Pend. Autorización', autorizado:'Autorizado', recibido:'Recibido', rechazado:'Rechazado', borrador:'Borrador', devuelto_parcial:'Dev. Parcial', devuelto_total:'Dev. Total', mandado_editar:'Mandado a Editar' };
   return `<span class="badge ${map[s] || ''}">${labels[s] || s}</span>`;
 }

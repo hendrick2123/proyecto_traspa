@@ -52,14 +52,8 @@ function updateBadges() {
   const user = getUser();
   let pendAuth = 0;
   if (user) {
-    if (user.rol === 'cordinador') {
-      pendAuth = S.traspasos.filter(t => t.status === 'pendiente_cordinador').length;
-    } else if (user.rol === 'residente') {
-      pendAuth = S.traspasos.filter(t => t.status === 'pendiente').length;
-    } else if (user.rol === 'control_obra') {
-      pendAuth = S.traspasos.filter(t => t.status === 'pre_autorizado').length;
-    } else if (user.rol === 'administrador') {
-      pendAuth = S.traspasos.filter(t => t.status === 'pendiente_cordinador' || t.status === 'pendiente' || t.status === 'pre_autorizado').length;
+    if (user.rol === 'control_obra' || user.rol === 'administrador') {
+      pendAuth = S.traspasos.filter(t => t.status === 'pre_autorizado' || t.status === 'pendiente' || t.status === 'pendiente_cordinador').length;
     }
   }
   const pendRec  = S.traspasos.filter(t => t.status === 'autorizado').length;
@@ -91,6 +85,17 @@ function getInitialView() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Check sandbox / dev mode banner
+  fetch('/api/environment')
+    .then(r => r.json())
+    .then(env => {
+      const banner = document.getElementById('sandbox-banner');
+      if (banner && env.is_dev) {
+        banner.style.display = 'flex';
+      }
+    })
+    .catch(() => {});
+
   if (typeof fetchState === 'function') {
     fetchState()
       .then(() => {

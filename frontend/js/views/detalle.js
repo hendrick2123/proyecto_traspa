@@ -61,14 +61,14 @@ function verDetalle(id) {
        <div class="form-group"><label>CC Destino</label><div>${getCC(t.ccDestino).nombre}</div></div>
        <div class="form-group"><label>Fecha Solicitud</label><div>${fmtDate(t.fechaSolicitud)}</div></div>
        ${t.autorizadorCordinador ? `
-       <div class="form-group"><label>Cordinador</label><div>${t.autorizadorCordinador}</div></div>
-       <div class="form-group"><label>Fecha VoBo Cordinador</label><div>${fmtDate(t.fechaAutorizacionCordinador)}</div></div>` : ''}
-       ${t.autorizador ? `
+       <div class="form-group"><label>Cordinador (VoBo)</label><div>${t.autorizadorCordinador}</div></div>
+       <div class="form-group"><label>Fecha VoBo</label><div>${fmtDate(t.fechaAutorizacionCordinador)}</div></div>` : ''}
+       ${(t.autorizador && t.autorizador2 && t.autorizador !== t.autorizador2) ? `
        <div class="form-group"><label>Liberó (Residente)</label><div>${t.autorizador}</div></div>
        <div class="form-group"><label>Fecha de Liberación</label><div>${fmtDate(t.fechaAutorizacion)}</div></div>` : ''}
-       ${t.autorizador2 ? `
-       <div class="form-group"><label>Autorizó (Control de Obra)</label><div>${t.autorizador2}</div></div>
-       <div class="form-group"><label>Fecha Autorización</label><div>${fmtDate(t.fechaAutorizacion2)}</div></div>` : ''}
+       ${(t.autorizador2 || t.autorizador) ? `
+       <div class="form-group"><label>Autorizó (Control de Obra)</label><div>${t.autorizador2 || t.autorizador}</div></div>
+       <div class="form-group"><label>Fecha Autorización</label><div>${fmtDate(t.fechaAutorizacion2 || t.fechaAutorizacion)}</div></div>` : ''}
        ${t.receptor ? `
        <div class="form-group"><label>Receptor</label><div>${t.receptor}</div></div>
        <div class="form-group"><label>Fecha Recepción</label><div>${fmtDate(t.fechaRecepcion)}</div></div>` : ''}
@@ -83,15 +83,15 @@ function verDetalle(id) {
        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Cordinador</label>
        <div style="margin-top:4px;font-size:13px">${t.comentarioAuthCordinador}</div>
      </div>` : ''}
-     ${t.comentarioAuth ? `
+     ${(t.comentarioAuth && t.autorizador !== t.autorizador2) ? `
      <div style="margin-bottom:12px">
        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Liberación (Residente)</label>
        <div style="margin-top:4px;font-size:13px">${t.comentarioAuth}</div>
      </div>` : ''}
-     ${t.comentarioAuth2 ? `
+     ${(t.comentarioAuth2 || (t.comentarioAuth && t.autorizador === t.autorizador2)) ? `
      <div style="margin-bottom:12px">
-       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Autorizó (Control de Obra)</label>
-       <div style="margin-top:4px;font-size:13px">${t.comentarioAuth2}</div>
+       <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Comentario Autorización (Control de Obra)</label>
+       <div style="margin-top:4px;font-size:13px">${t.comentarioAuth2 || t.comentarioAuth}</div>
      </div>` : ''}
      <div style="margin-bottom:4px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase">Insumos</div>
      ${resumenItems(t)}`,

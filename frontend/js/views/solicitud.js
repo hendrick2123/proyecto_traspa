@@ -904,7 +904,7 @@ async function guardarSolicitud() {
     id:               'T' + Date.now(),
     folio,
     tipo,
-    status:           isPostventa ? 'recibido' : 'pendiente_cordinador',
+    status:           isPostventa ? 'recibido' : 'pre_autorizado',
     solicitante:      sol,
     empresaOrigen:    empOri,
     ccOrigen:         ccOri,
@@ -950,14 +950,14 @@ async function guardarSolicitud() {
         </div>
         <div style="font-size:20px;font-weight:800;margin-bottom:8px">${isPostventa ? '¡Solicitud Registrada!' : '¡Solicitud Generada!'}</div>
         <div style="font-size:26px;font-weight:900;color:var(--green);margin-bottom:4px">${finalFolio}</div>
-        <div style="color:#888;font-size:13px;margin-bottom:24px">${isPostventa ? 'El movimiento ha sido registrado directamente' : 'La solicitud está pendiente de autorización'}</div>
+        <div style="color:#888;font-size:13px;margin-bottom:24px">${isPostventa ? 'El movimiento ha sido registrado directamente' : 'La solicitud ha sido enviada a Control de Obra para su autorización'}</div>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="imprimirTraspaso('${finalId}')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Imprimir Solicitud
           </button>
           <button class="btn btn-secondary" onclick="navigate('nueva-solicitud')">Nueva Solicitud</button>
-          ${isPostventa ? '<button class="btn btn-secondary" onclick="navigate(\'historial\')">Ir al Historial</button>' : '<button class="btn btn-secondary" onclick="navigate(\'autorizacion\')">Ir a Autorización</button>'}
+          ${isPostventa || !(getUser() && ROL_VIEWS[getUser().rol] && ROL_VIEWS[getUser().rol].includes('autorizacion')) ? '<button class="btn btn-secondary" onclick="navigate(\'historial\')">Ir al Historial</button>' : '<button class="btn btn-secondary" onclick="navigate(\'autorizacion\')">Ir a Autorización</button>'}
         </div>
       </div>
     </div>`;
